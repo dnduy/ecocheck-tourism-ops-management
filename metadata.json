@@ -1,0 +1,7 @@
+{
+  "name": "EcoCheck - Tourism Ops Management",
+  "description": "A comprehensive digital checklist and operations management system for tourism ecosystems. Handles shifts, assets, maintenance tickets, and AI-assisted troubleshooting.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
