@@ -21,6 +21,7 @@ class UpdateIncidentRequest extends FormRequest
             'occurred_at' => ['sometimes', 'date'],
             'resolved_at' => ['sometimes', 'nullable', 'date'],
             'resolved_by' => ['sometimes', 'nullable', 'exists:users,id'],
+            'resolution_note' => ['sometimes', 'nullable', 'string'],
         ];
     }
 }

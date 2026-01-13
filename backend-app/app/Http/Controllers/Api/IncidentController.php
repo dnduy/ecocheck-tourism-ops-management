@@ -23,6 +23,11 @@ class IncidentController extends Controller
         return response()->json($incidents);
     }
 
+    public function show(Incident $incident): JsonResponse
+    {
+        return response()->json($incident);
+    }
+
     public function store(StoreIncidentRequest $request): JsonResponse
     {
         $incident = Incident::create([

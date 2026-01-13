@@ -1,5 +1,5 @@
 
-import { Checklist, Incident, User, Role, Area, Shift } from '../types';
+import { Checklist, Incident, User, Area, Shift } from '../types';
 import { MOCK_CHECKLISTS, MOCK_INCIDENTS, MOCK_USERS } from './mockData';
 
 const KEYS = {

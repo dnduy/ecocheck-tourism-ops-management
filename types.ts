@@ -13,6 +13,19 @@ export enum ChecklistStatus {
   REVIEWED = 'reviewed'
 }
 
+/**
+ * WorkStatus - Trạng thái công việc rõ ràng
+ * Flow: pending → in_progress → completed → needs_review → approved/rejected
+ */
+export enum WorkStatus {
+  PENDING = 'pending',           // ⏳ Chưa làm
+  IN_PROGRESS = 'in_progress',   // 🔄 Đang làm
+  COMPLETED = 'completed',       // ✅ Đã làm
+  NEEDS_REVIEW = 'needs_review', // 👀 Chờ duyệt
+  APPROVED = 'approved',         // ✅ Đã xác nhận
+  REJECTED = 'rejected'          // ❌ Bị từ chối
+}
+
 export enum IncidentPriority {
   LOW = 'low',
   MEDIUM = 'medium',
@@ -112,7 +125,8 @@ export interface Checklist {
   area: Area;
   shift: string;
   date: string;
-  status: ChecklistStatus;
+  status: ChecklistStatus; // @deprecated - use workStatus instead
+  workStatus?: WorkStatus; // ✅ NEW: Use this for review workflow
   items: ChecklistItem[];
   assignedTo: string;
   verifiedBy?: string;
@@ -126,10 +140,13 @@ export interface Incident {
   description: string;
   area?: string | Area;
   severity?: string; // 'low' | 'medium' | 'high'
+  priority?: IncidentPriority; // Support both severity and priority
   status: string; // 'open' | 'in_progress' | 'resolved'
   reported_by?: string | number;
+  reportedBy?: string | number; // Support both snake_case and camelCase
   assigned_to?: string | number;
   created_at?: string;
+  createdAt?: string; // Support both snake_case and camelCase
   updated_at?: string;
   resolution_note?: string;
   resolved_at?: string;

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Checklist, ChecklistStatus, User } from '../types';
-import { X, Calendar, CheckCircle2, XCircle, TrendingUp, Filter } from 'lucide-react';
+import { X, CheckCircle2, XCircle, TrendingUp, Filter } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts';
 
 interface ChecklistHistoryProps {

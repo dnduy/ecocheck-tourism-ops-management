@@ -15,11 +15,14 @@ class Run extends Model
         'checklist_template_id',
         'area_id',
         'status',
+        'work_status',
         'assigned_to',
         'verified_by',
         'scheduled_for',
         'started_at',
         'completed_at',
+        'review_requested_at',
+        'source_template_note',
         'created_by',
         'updated_by',
     ];
@@ -28,6 +31,7 @@ class Run extends Model
         'scheduled_for' => 'date',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'review_requested_at' => 'datetime',
     ];
 
     public function template(): BelongsTo
@@ -55,12 +59,12 @@ class Run extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function assignee(): BelongsTo
+    public function assignedUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
-    public function verifier(): BelongsTo
+    public function verifiedUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
     }

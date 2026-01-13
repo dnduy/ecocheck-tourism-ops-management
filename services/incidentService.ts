@@ -31,11 +31,28 @@ export const incidentService = {
     return apiGet(endpoint);
   },
 
+  async get(id: number): Promise<any> {
+    return apiGet(`/incidents/${id}`);
+  },
+
   async create(data: IncidentData): Promise<any> {
     return apiPost('/incidents', data);
   },
 
   async update(id: number, data: IncidentUpdateData): Promise<any> {
     return apiPatch(`/incidents/${id}`, data);
+  },
+
+  async updateStatus(id: number, status: string, resolutionNote?: string): Promise<any> {
+    return apiPatch(`/incidents/${id}`, { status, resolution_note: resolutionNote });
+  },
+
+  async assign(id: number, userId: number): Promise<any> {
+    return apiPatch(`/incidents/${id}`, { assigned_to: userId });
+  },
+
+  async delete(id: number): Promise<any> {
+    const { apiDelete } = await import('./api');
+    return apiDelete(`/incidents/${id}`);
   }
 };

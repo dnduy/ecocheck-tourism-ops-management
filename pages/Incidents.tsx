@@ -1,23 +1,31 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Incident, IncidentStatus, IncidentPriority, User, Area } from '../types';
-import { AlertOctagon, Bot, ChevronDown, ChevronRight, Clock, CheckCircle, Hammer, Plus, X, AlertTriangle, User as UserIcon, Layers, Wrench, Zap, Droplets, Truck, Armchair, Flower2 } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, CheckCircle, Hammer, Plus, X, AlertTriangle, User as UserIcon, Wrench, Zap, Droplets, Truck, Armchair, Flower2 } from 'lucide-react';
 import { analyzeIncident } from '../services/geminiService';
 import { sanitizeInput } from '../services/validation';
 
 interface IncidentsProps {
   incidents: Incident[];
   currentUser: User;
+  users?: User[];
   areas?: Area[];
-  onUpdateStatus: (id: string, status: IncidentStatus) => void;
-  onCreateIncident: (data: { title: string, description: string, area: string, priority: IncidentPriority, reportedBy: string }) => void;
+  onUpdateStatus: (id: string, status: IncidentStatus, resolutionNote?: string) => void;
+  onCreateIncident: (data: { title: string; description: string; area: string; priority: IncidentPriority; reportedBy: string }) => void;
+  onAssignIncident?: (id: string, userId: number) => void;
 }
 
-export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, areas = [], onUpdateStatus, onCreateIncident }) => {
+export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, users = [], areas = [], onUpdateStatus, onCreateIncident, onAssignIncident }) => {
   const [selectedIncident, setSelectedIncident] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [aiLoading, setAiLoading] = useState(false);
   const [aiAdvice, setAiAdvice] = useState<Record<string, string>>({});
+  const [detailIncident, setDetailIncident] = useState<Incident | null>(null);
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [assignedUserId, setAssignedUserId] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | IncidentStatus.OPEN | IncidentStatus.IN_PROGRESS | IncidentStatus.RESOLVED>('all');
+  const [priorityFilter, setPriorityFilter] = useState<'all' | IncidentPriority>('all');
+  const [areaFilter, setAreaFilter] = useState<string>('');
 
   // Creation Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -56,19 +64,28 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, ar
     }
   };
 
-  // --- GROUPING LOGIC ---
+  // --- FILTERING & GROUPING LOGIC ---
+  const filteredIncidents = useMemo(() => {
+    return incidents.filter((inc) => {
+      const byStatus = statusFilter === 'all' ? true : inc.status === statusFilter;
+      const byPriority = priorityFilter === 'all' ? true : (inc as any).priority === priorityFilter;
+      const byArea = areaFilter ? String(inc.area || '').toLowerCase().includes(areaFilter.toLowerCase()) : true;
+      return byStatus && byPriority && byArea;
+    });
+  }, [incidents, statusFilter, priorityFilter, areaFilter]);
+
   const groupedIncidents = useMemo(() => {
     const groups: Record<string, Incident[]> = {};
     
     // Sort incidents to handle "Other" last visually if needed, but here just grouping
-    incidents.forEach(inc => {
+    filteredIncidents.forEach(inc => {
       const cat = detectCategory(inc);
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(inc);
     });
 
     return groups;
-  }, [incidents]);
+  }, [filteredIncidents]);
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories(prev => ({
@@ -77,19 +94,18 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, ar
     }));
   };
 
-  // Initialize expanded state for categories with OPEN items
+  // Initialize expanded state once for categories with open items
+  const expandedInitRef = useRef(false);
   React.useEffect(() => {
+    if (expandedInitRef.current) return;
     const initialExpanded: Record<string, boolean> = {};
-    Object.entries(groupedIncidents).forEach(([cat, items]) => {
-      // Expand if there are any non-resolved items
+    Object.entries(groupedIncidents).forEach(([cat, items]: [string, Incident[]]) => {
       if (items.some(i => i.status !== IncidentStatus.RESOLVED)) {
         initialExpanded[cat] = true;
       }
     });
-    // Only set if empty (on mount)
-    if (Object.keys(expandedCategories).length === 0) {
-      setExpandedCategories(initialExpanded);
-    }
+    setExpandedCategories(initialExpanded);
+    expandedInitRef.current = true;
   }, [groupedIncidents]);
 
 
@@ -128,7 +144,8 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, ar
     if (aiAdvice[incident.id]) return; // Already analyzed
     
     setAiLoading(true);
-    const advice = await analyzeIncident(incident.title, incident.description, incident.area);
+    const areaName = typeof incident.area === 'string' ? incident.area : incident.area.name;
+    const advice = await analyzeIncident(incident.title, incident.description, areaName);
     setAiAdvice(prev => ({ ...prev, [incident.id]: advice }));
     setAiLoading(false);
   };
@@ -139,6 +156,54 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, ar
       case IncidentPriority.HIGH: return 'bg-orange-100 text-orange-700 border-orange-200';
       case IncidentPriority.MEDIUM: return 'bg-yellow-100 text-yellow-700 border-yellow-200';
       default: return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+  };
+
+  const statusLabels: Record<IncidentStatus, string> = {
+    [IncidentStatus.OPEN]: 'Đang mở',
+    [IncidentStatus.IN_PROGRESS]: 'Đang xử lý',
+    [IncidentStatus.RESOLVED]: 'Đã xong'
+  };
+
+  const getStatusBadgeClass = (status: IncidentStatus) => {
+    switch (status) {
+      case IncidentStatus.OPEN:
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case IncidentStatus.IN_PROGRESS:
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+      case IncidentStatus.RESOLVED:
+        return 'bg-green-50 text-green-700 border-green-200';
+      default:
+        return 'bg-gray-100 text-gray-600 border-gray-200';
+    }
+  };
+
+  const openDetail = (inc: Incident) => {
+    setDetailIncident(inc);
+    setResolutionNote((inc as any).resolution_note || '');
+    setAssignedUserId((inc as any).assigned_to || null);
+  };
+
+  const closeDetail = () => {
+    setDetailIncident(null);
+    setResolutionNote('');
+    setAssignedUserId(null);
+  };
+
+  const handleResolve = (inc: Incident) => {
+    onUpdateStatus(String(inc.id), IncidentStatus.RESOLVED, resolutionNote || (inc as any).resolution_note);
+    closeDetail();
+  };
+
+  const handleMarkInProgress = (inc: Incident) => {
+    onUpdateStatus(String(inc.id), IncidentStatus.IN_PROGRESS);
+    closeDetail();
+  };
+
+  const handleAssignUser = () => {
+    if (detailIncident && assignedUserId && onAssignIncident) {
+      onAssignIncident(String(detailIncident.id), assignedUserId);
+      closeDetail();
     }
   };
 
@@ -154,14 +219,45 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, ar
         </button>
       </div>
 
+      {/* Filters */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <select 
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as any)}
+          className="p-2 bg-white border border-gray-200 rounded-xl text-[12px]"
+        >
+          <option value="all">Trạng thái: tất cả</option>
+          <option value={IncidentStatus.OPEN}>Đang mở</option>
+          <option value={IncidentStatus.IN_PROGRESS}>Đang xử lý</option>
+          <option value={IncidentStatus.RESOLVED}>Đã xong</option>
+        </select>
+        <select 
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value as any)}
+          className="p-2 bg-white border border-gray-200 rounded-xl text-[12px]"
+        >
+          <option value="all">Ưu tiên: tất cả</option>
+          {Object.values(IncidentPriority).map(p => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+        <input 
+          type="text"
+          value={areaFilter}
+          onChange={(e) => setAreaFilter(e.target.value)}
+          className="p-2 bg-white border border-gray-200 rounded-xl text-[12px]"
+          placeholder="Lọc theo khu vực"
+        />
+      </div>
+
       <div className="space-y-4 flex-1 overflow-y-auto pr-1">
-        {incidents.length === 0 ? (
+        {filteredIncidents.length === 0 ? (
            <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-gray-200">
              <AlertTriangle size={48} className="mx-auto text-gray-100 mb-3" />
              <p className="text-sm text-gray-400 font-medium">Không có sự cố nào đang mở</p>
            </div>
         ) : (
-          Object.entries(groupedIncidents).map(([category, items]) => {
+          Object.entries(groupedIncidents).map(([category, items]: [string, Incident[]]) => {
             const isCategoryExpanded = !!expandedCategories[category];
             const openCount = items.filter(i => i.status !== IncidentStatus.RESOLVED).length;
 
@@ -255,6 +351,12 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, ar
                                     Nhận việc
                                   </button>
                                 )}
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); openDetail(incident); }}
+                                  className="flex-1 py-2 bg-white text-gray-700 rounded-lg text-xs font-bold flex items-center justify-center border border-gray-200 hover:border-brand-200"
+                                >
+                                  Xem chi tiết
+                                </button>
                               </div>
 
                               {/* AI Section */}
@@ -285,6 +387,7 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, ar
                                   </p>
                                 )}
                               </div>
+
                             </div>
                           )}
                         </div>
@@ -297,6 +400,114 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, ar
           })
         )}
       </div>
+
+      {detailIncident && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-end md:items-center justify-center z-50" onClick={closeDetail}>
+          <div 
+            className="bg-white w-full md:max-w-xl rounded-t-3xl md:rounded-2xl shadow-2xl border border-gray-100 p-5 md:p-6" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${getPriorityColor(detailIncident.priority)}`}>
+                    {detailIncident.priority}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${getStatusBadgeClass(detailIncident.status)}`}>
+                    {statusLabels[detailIncident.status]}
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-gray-900">{detailIncident.title}</h3>
+                <p className="text-xs text-gray-500">Khu vực: {detailIncident.area}</p>
+              </div>
+              <button onClick={closeDetail} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm text-gray-700">
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                <p className="text-gray-500 text-xs mb-1 font-semibold">Mô tả</p>
+                <p>{detailIncident.description}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
+                <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                  <p className="text-[11px] text-gray-500 mb-1 font-semibold">Người báo</p>
+                  <p className="font-semibold text-gray-800 flex items-center gap-1"><UserIcon size={12}/> {detailIncident.reportedBy}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                  <p className="text-[11px] text-gray-500 mb-1 font-semibold">Thời gian</p>
+                  <p className="font-semibold text-gray-800">{detailIncident.createdAt}</p>
+                </div>
+              </div>
+
+              {/* Assign User Section */}
+              {users.length > 0 && onAssignIncident && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                  <p className="text-[11px] text-blue-600 mb-2 font-semibold flex items-center gap-1">
+                    <UserIcon size={12}/> Gán người xử lý
+                  </p>
+                  <div className="flex gap-2">
+                    <select 
+                      value={assignedUserId || ''}
+                      onChange={(e) => setAssignedUserId(Number(e.target.value))}
+                      className="flex-1 border border-blue-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="">-- Chọn người --</option>
+                      {users.filter(u => u.role === 'maintenance' || u.role === 'staff').map(u => (
+                        <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleAssignUser}
+                      disabled={!assignedUserId}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Gán
+                    </button>
+                  </div>
+                  {(detailIncident as any).assigned_to && (
+                    <p className="text-[10px] text-blue-500 mt-1">
+                      Đã gán cho: {users.find(u => String(u.id) === String((detailIncident as any).assigned_to))?.name || 'User #' + (detailIncident as any).assigned_to}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                <p className="text-[11px] text-gray-500 mb-2 font-semibold flex items-center gap-1"><CheckCircle size={12}/> Ghi chú hoàn thành</p>
+                <textarea 
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-100 focus:border-brand-200"
+                  rows={3}
+                  placeholder="Chi tiết cách xử lý sự cố (nếu có)"
+                  value={resolutionNote}
+                  onChange={(e) => setResolutionNote(e.target.value)}
+                />
+                {detailIncident.status === IncidentStatus.RESOLVED && (detailIncident as any).resolution_note && (
+                  <p className="text-[11px] text-gray-500 mt-1">Đã lưu trước đó: {(detailIncident as any).resolution_note}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <button 
+                onClick={() => handleMarkInProgress(detailIncident)}
+                disabled={detailIncident.status === IncidentStatus.RESOLVED}
+                className="py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Hammer size={16}/> Nhận xử lý
+              </button>
+              <button 
+                onClick={() => handleResolve(detailIncident)}
+                className="py-3 bg-green-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-green-700"
+              >
+                <CheckCircle size={16}/> Đánh dấu hoàn thành
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CREATE MODAL */}
       {showCreateModal && (

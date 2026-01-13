@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, LogIn, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { authService } from '../services/authService';
 
 interface LoginProps {
@@ -16,7 +16,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    /* global google */
     const handleCredentialResponse = async (response: any) => {
       try {
         setIsLoading(true);
@@ -49,15 +48,15 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
     };
 
-    const google = (window as any).google;
-    if (google) {
-      google.accounts.id.initialize({
+    const googleObj = (window as any).google;
+    if (googleObj) {
+      googleObj.accounts.id.initialize({
         client_id: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com", 
         callback: handleCredentialResponse,
         auto_select: false,
       });
 
-      google.accounts.id.renderButton(
+      googleObj.accounts.id.renderButton(
         document.getElementById("googleBtn"),
         { theme: "outline", size: "large", width: 280, text: "signin_with" }
       );

@@ -8,8 +8,8 @@ import { Reports } from './pages/Reports';
 import { Admin } from './pages/Admin';
 import { Login } from './pages/Login';
 import { QRScanner } from './components/QRScanner';
-import { Role, Checklist, ChecklistStatus, Incident, IncidentStatus, IncidentPriority, User, Area, Shift } from './types';
-import { LogOut, Bell, AlertTriangle, X, CheckCircle, Loader } from 'lucide-react';
+import { Role, Incident, User, Area } from './types';
+import { Bell, AlertTriangle, X, CheckCircle, Loader } from 'lucide-react';
 import { authService } from './services/authService';
 import { areaService } from './services/areaService';
 import { incidentService } from './services/incidentService';
@@ -42,6 +42,7 @@ export default function App() {
   const [dataLoading, setDataLoading] = useState(false);
 
   // --- INITIALIZATION ---
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const initApp = async () => {
       try {

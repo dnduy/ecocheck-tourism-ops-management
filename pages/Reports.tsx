@@ -2,7 +2,7 @@
 import React from 'react';
 import { Checklist, Incident, User } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { Download, FileSpreadsheet } from 'lucide-react';
+import { FileSpreadsheet } from 'lucide-react';
 import { exportChecklistsToExcel } from '../services/excelExport';
 
 interface ReportsProps {
@@ -72,7 +72,7 @@ export const Reports: React.FC<ReportsProps> = React.memo(({ checklists, inciden
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
         <h3 className="font-bold text-gray-700 mb-4">Tỷ lệ hoàn thành Checklist</h3>
         <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={256} minWidth={0}>
             <PieChart>
               <Pie
                 data={statusData}
@@ -100,7 +100,7 @@ export const Reports: React.FC<ReportsProps> = React.memo(({ checklists, inciden
         
         {/* Chart */}
         <div className="h-56 w-full mb-6">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={224} minWidth={0}>
             <BarChart data={equipmentData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
               <XAxis dataKey="name" tick={{fontSize: 10}} interval={0} />
               <YAxis allowDecimals={false} />
@@ -146,7 +146,7 @@ export const Reports: React.FC<ReportsProps> = React.memo(({ checklists, inciden
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
         <h3 className="font-bold text-gray-700 mb-4">Sự cố theo khu vực (Tổng hợp)</h3>
         <div className="h-48 w-full">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={192} minWidth={0}>
             <BarChart data={issueData} layout="vertical">
               <XAxis type="number" hide />
               <YAxis dataKey="name" type="category" width={60} tick={{fontSize: 12}} />

@@ -21,6 +21,7 @@ class Incident extends Model
         'resolved_by',
         'occurred_at',
         'resolved_at',
+        'resolution_note',
     ];
 
     protected $casts = [

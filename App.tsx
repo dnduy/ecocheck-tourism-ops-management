@@ -11,7 +11,7 @@ const ChecklistExecution = lazy(() => import('./pages/ChecklistExecution').then(
 const Incidents = lazy(() => import('./pages/Incidents').then(m => ({ default: m.Incidents })));
 const Reports = lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
 const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })));
-import { Role, Checklist, ChecklistStatus, Incident, IncidentStatus, IncidentPriority, User, Area, Shift } from './types';
+import { Role, Checklist, ChecklistStatus, WorkStatus, Incident, IncidentStatus, IncidentPriority, User, Area, Shift } from './types';
 import { LogOut, Bell, AlertTriangle, X, CheckCircle } from 'lucide-react';
 import { db } from './services/database'; // Import Database Service
 import { incidentService } from './services/incidentService';
@@ -55,10 +55,11 @@ export default function App() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [isFetchingRuns, setIsFetchingRuns] = useState(false);
   const [isFetchingIncidents, setIsFetchingIncidents] = useState(false);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
   // --- NOTIFICATIONS ---
   const addNotification = (title: string, message: string, type: 'CRITICAL' | 'NORMAL' | 'SUCCESS' = 'NORMAL') => {
-    const id = Date.now().toString();
+    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     setNotifications(prev => [...prev, { id, title, message, type, timestamp: Date.now() }]);
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 6000);
   };
@@ -75,42 +76,61 @@ export default function App() {
   const canAccessAdmin = user?.role === Role.MANAGER || user?.role === Role.SUPERVISOR;
 
   // --- INITIALIZATION ---
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const initApp = async () => {
-      // Check for API-based session first
-      const apiToken = localStorage.getItem('api_token');
-      const currentUser = localStorage.getItem('current_user');
-      
-      if (apiToken && currentUser) {
-        try {
-          const parsedUser = JSON.parse(currentUser);
-          console.log('Found API session, setting user:', parsedUser);
-          setUser(parsedUser);
-        } catch (e) {
-          console.error('Failed to parse current_user:', e);
+      try {
+        // Check for API-based session first
+        const apiToken = localStorage.getItem('api_token');
+        const currentUser = localStorage.getItem('current_user');
+        
+        if (apiToken && currentUser) {
+          try {
+            const parsedUser = JSON.parse(currentUser);
+            if (import.meta.env.DEV) console.log('Found API session, setting user:', parsedUser);
+            setUser(parsedUser);
+          } catch (e) {
+            console.error('Failed to parse current_user:', e);
+          }
+        } else {
+          // Fallback to old DB session
+          db.init();
+          const sessionUser = db.getSession();
+          if (sessionUser) {
+            if (import.meta.env.DEV) console.log('Found DB session, setting user:', sessionUser);
+            setUser(sessionUser);
+          }
         }
-      } else {
-        // Fallback to old DB session
-        db.init();
-        const sessionUser = db.getSession();
-        if (sessionUser) {
-          console.log('Found DB session, setting user:', sessionUser);
-          setUser(sessionUser);
-        }
-      }
 
-      await refreshData();
-      // Override with live API data
-      const usersPromise = loadUsersFromApi();
-      const templatesPromise = loadTemplatesFromApi();
-      const freshAreas = await loadAreasFromApi();
-      await Promise.all([
-        usersPromise,
-        templatesPromise,
-        loadIncidentsFromApi(freshAreas),
-        loadRunsFromApi(freshAreas)
-      ]);
-      setIsAuthLoading(false);
+        // Only load data if we have a user
+        if (apiToken) {
+          try {
+            await refreshData();
+            // Override with live API data
+            const usersPromise = loadUsersFromApi();
+            const templatesPromise = loadTemplatesFromApi();
+            const freshAreas = await loadAreasFromApi();
+            await Promise.all([
+              usersPromise,
+              templatesPromise,
+              loadIncidentsFromApi(freshAreas),
+              loadRunsFromApi(freshAreas)
+            ]);
+
+            // Daily task notification for staff
+            await notifyStaffSummary();
+          } catch (e) {
+            console.error('Failed to load app data:', e);
+            // Data load errors don't block login screen
+          }
+        }
+      } catch (e) {
+        console.error('Init app error:', e);
+      } finally {
+        setIsAuthLoading(false);
+      }
     };
     initApp();
   }, []);
@@ -202,7 +222,10 @@ export default function App() {
           priority: (inc.severity || inc.priority || 'medium') as IncidentPriority,
           status: (inc.status || 'open') as any,
           reportedBy: inc.reported_by_name || inc.reported_by || '',
-          createdAt: inc.created_at || new Date().toISOString()
+          createdAt: inc.created_at || new Date().toISOString(),
+          resolution_note: inc.resolution_note,
+          resolved_at: inc.resolved_at,
+          resolved_by: inc.resolved_by_name || inc.resolved_by
         } as unknown as Incident;
       });
       setIncidents(mapped);
@@ -214,60 +237,186 @@ export default function App() {
   };
 
   // --- RUNS VIA API ---
-  const mapRunToChecklist = (runDetail: any, areaList: Area[]): Checklist => {
-    const run = runDetail.run || runDetail;
-    const areaId = run.area_id ?? runDetail.template?.area_id;
-    const area = areaList.find(a => String(a.id) === String(areaId)) || { id: areaId || `area-${run.id}`, name: `Khu vực #${areaId || '?'}`, type: 'GENERAL' } as Area;
-    const entries = runDetail.entries || [];
-    const items = (runDetail.items || []).map((it: any) => {
+  const mapRunToChecklist = (runData: any, areaList: Area[]): Checklist => {
+    // runData structure from API:
+    // { id, area_id, status, template: {id, name, groups: [{id, title, items: []}]}, entries: [...] }
+    
+    const areaId = runData.area_id;
+    const area = areaList.find(a => String(a.id) === String(areaId)) || { 
+      id: areaId || `area-${runData.id}`, 
+      name: runData.area?.name || `Khu vực #${areaId || '?'}`, 
+      type: 'GENERAL' 
+    } as Area;
+    
+    const entries = runData.entries || [];
+    
+    // Flatten all items from all groups
+    const allItems: any[] = [];
+    if (runData.template?.groups) {
+      for (const group of runData.template.groups) {
+        if (group.items) {
+          allItems.push(...group.items);
+        }
+      }
+    }
+    
+    // Map items with their entry values
+    const items = allItems.map((it: any) => {
       const entry = entries.find((e: any) => e.item_id === it.id);
       let status: any;
       if (entry?.value === 'ok') status = 'PASS';
       else if (entry?.value === 'not_ok') status = 'FAIL';
+      
       return {
         id: String(it.id),
-        text: it.content,
+        text: it.title || it.content || 'Item',  // Use title from database
         isCritical: !!it.is_critical,
         status,
         note: entry?.note,
         photoUrl: entry?.photo_url
-      } as Checklist['items'][number];
+      };
     });
 
+    // Map status (both old status and new work_status)
     let mappedStatus = ChecklistStatus.PENDING;
-    if (run.status === 'active') mappedStatus = ChecklistStatus.IN_PROGRESS;
-    else if (run.status === 'completed') mappedStatus = ChecklistStatus.COMPLETED;
-    if (run.verified_at) mappedStatus = ChecklistStatus.REVIEWED;
+    if (runData.status === 'in_progress') mappedStatus = ChecklistStatus.IN_PROGRESS;
+    else if (runData.status === 'completed') mappedStatus = ChecklistStatus.COMPLETED;
+    else if (runData.status === 'reviewed') mappedStatus = ChecklistStatus.REVIEWED;
+
+    // Map work_status to WorkStatus enum
+    let workStatus = runData.work_status as WorkStatus;
+    if (!workStatus) {
+      // Fallback: convert old status to work_status
+      if (runData.status === 'pending') workStatus = WorkStatus.PENDING;
+      else if (runData.status === 'in_progress') workStatus = WorkStatus.IN_PROGRESS;
+      else if (runData.status === 'completed') workStatus = WorkStatus.COMPLETED;
+      else if (runData.status === 'reviewed') workStatus = WorkStatus.APPROVED;
+      else workStatus = WorkStatus.PENDING;
+    }
 
     return {
-      id: String(run.id),
-      templateName: runDetail.template?.name || 'Checklist',
+      id: String(runData.id),
+      templateName: runData.template?.name || 'Checklist',
       area,
-      shift: runDetail.sessions?.[0]?.label || 'Ca A',
-      date: run.date,
+      shift: 'Ca A',  // Can be enhanced later
+      date: runData.scheduled_for || runData.date || new Date().toISOString().split('T')[0],
       status: mappedStatus,
+      workStatus: workStatus, // ✅ NEW: Use this for review workflow
       items,
-      assignedTo: run.assigned_to ? String(run.assigned_to) : '',
-      verifiedBy: run.verified_by ? String(run.verified_by) : undefined,
-      completedAt: run.completed_at,
-      verifiedAt: run.verified_at
+      assignedTo: runData.assigned_to ? String(runData.assigned_to) : '',
+      verifiedBy: runData.verified_by ? String(runData.verified_by) : undefined,
+      completedAt: runData.completed_at,
+      verifiedAt: runData.verified_at
     };
   };
 
   const loadRunsFromApi = async (areasOverride?: Area[]) => {
     if (isFetchingRuns) return;
+    if (import.meta.env.DEV) console.log('[loadRunsFromApi] Called from:', new Error().stack?.split('\n')[2]?.trim());
     setIsFetchingRuns(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const resp = await runService.list({ date: today });
+      // Load runs; for STAFF, request only assigned runs
+      const params: any = user && user.role === Role.STAFF 
+        ? { assigned_to: Number(user.id), per_page: 1000 } 
+        : { per_page: 1000 };
+      
+      const resp = await runService.list(params);
+      
+      // Handle paginated response
       const apiRuns: any[] = resp.data || resp || [];
       const areaList = areasOverride || areas;
+      
       const mapped = apiRuns.map(run => mapRunToChecklist(run, areaList));
+      if (import.meta.env.DEV) console.log('Loaded runs:', mapped.length, 'runs with items');
+      
       setChecklists(mapped);
     } catch (e) {
+      console.error('Load runs error:', e);
       reportError('Failed to load runs from API', e, 'Không tải được checklist');
     } finally {
       setIsFetchingRuns(false);
+    }
+  };
+
+  // --- SUPERVISOR NOTIFICATIONS (polling for runs needing review) ---
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const isSupervisor = user && (user.role === Role.SUPERVISOR || user.role === Role.MANAGER);
+    if (!isSupervisor) {
+      setPendingReviewCount(0);
+      return;
+    }
+    let cancelled = false;
+    const fetchPending = async () => {
+      try {
+        const resp = await runService.list({ status: 'completed' });
+        const runs = (resp as any).data || resp || [];
+        if (!cancelled) setPendingReviewCount(Array.isArray(runs) ? runs.length : 0);
+      } catch (e) {
+        // Silent failure; do not spam notifications
+      }
+    };
+    fetchPending();
+    const id = setInterval(fetchPending, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [user]);
+
+  // --- INCIDENTS AUTO-REFRESH ---
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = setInterval(() => {
+      loadIncidentsFromApi();
+    }, 60000);
+    return () => clearInterval(id);
+  }, []); // Empty deps - only setup once on mount
+
+  // --- STAFF LOGIN SUMMARY NOTIFICATION ---
+  const notifyStaffSummary = async () => {
+    try {
+      if (!user || user.role !== Role.STAFF) return;
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+      const storageKey = `daily_summary_${user.id}_${todayStr}`;
+      if (localStorage.getItem(storageKey)) return; // avoid duplicate per day
+
+      // Today tasks (pending/in_progress)
+      const todayResp = await runService.list({ date: todayStr, assigned_to: Number(user.id) });
+      const todayRuns: any[] = todayResp.data || todayResp || [];
+      const todayActive = todayRuns.filter(r => ['pending','in_progress','draft'].includes(r.status));
+
+      // Unfinished tasks from previous days (pending/in_progress and scheduled_for < today)
+      const recentResp = await runService.list({ assigned_to: Number(user.id) });
+      const recentRuns: any[] = recentResp.data || recentResp || [];
+      const unfinished = recentRuns.filter(r => {
+        const d = (r.scheduled_for || r.date || todayStr).split('T')[0];
+        return (r.status === 'pending' || r.status === 'in_progress') && d < todayStr;
+      });
+
+      // Tomorrow scheduled tasks
+      const tomorrowResp = await runService.list({ date: tomorrowStr, assigned_to: Number(user.id) });
+      const tomorrowRuns: any[] = tomorrowResp.data || tomorrowResp || [];
+
+      if (todayActive.length > 0) {
+        const top = todayActive.slice(0, 2).map(r => `${r.template?.name || 'Checklist'} • ${r.area?.name || 'Khu vực'}`).join(' | ');
+        addNotification('Nhiệm vụ hôm nay', `Bạn có ${todayActive.length} checklist cần làm. ${top ? 'Ví dụ: ' + top : ''}`, 'NORMAL');
+      }
+      if (unfinished.length > 0) {
+        addNotification('Việc chưa hoàn thành', `Còn ${unfinished.length} checklist từ các ngày trước cần hoàn tất`, 'CRITICAL');
+      }
+      if (tomorrowRuns.length > 0) {
+        const top2 = tomorrowRuns.slice(0, 2).map(r => `${r.template?.name || 'Checklist'} • ${r.area?.name || 'Khu vực'}`).join(' | ');
+        addNotification('Chuẩn bị cho ngày mai', `Dự kiến có ${tomorrowRuns.length} checklist. ${top2 ? 'Ví dụ: ' + top2 : ''}`, 'NORMAL');
+      }
+
+      localStorage.setItem(storageKey, '1');
+    } catch (e) {
+      console.warn('Staff summary notification failed:', e);
     }
   };
 
@@ -281,10 +430,12 @@ export default function App() {
   // --- HANDLERS ---
 
   const handleLogin = (userFromLogin: User) => {
-    console.log('App.handleLogin called with user:', userFromLogin);
+    if (import.meta.env.DEV) console.log('App.handleLogin called with user:', userFromLogin);
     setUser(userFromLogin);
     addNotification('Đăng nhập thành công', `Chào mừng ${userFromLogin.name}!`, 'SUCCESS');
     setCurrentTab('dashboard');
+    // Trigger daily login summary for staff
+    setTimeout(() => { notifyStaffSummary(); }, 300);
   };
 
   const handleLogout = () => {
@@ -410,6 +561,22 @@ export default function App() {
     }
   };
 
+  const handleUpdateArea = async (id: string, name: string, type: string) => {
+    const cleanName = sanitizeInput(name);
+    if (!cleanName || cleanName.length < 2) {
+      addNotification('Lỗi', 'Tên khu vực phải có ít nhất 2 ký tự', 'CRITICAL');
+      return;
+    }
+    try {
+      const updated = await areaService.update(Number(id), { name: cleanName, type });
+      const mapped: Area = { id: updated.id, name: updated.name, type: updated.type || type, description: updated.description };
+      setAreas(prev => prev.map(a => String(a.id) === String(id) ? mapped : a));
+      addNotification('Cập nhật', `Đã cập nhật khu vực: ${mapped.name}`, 'SUCCESS');
+    } catch (e: any) {
+      reportError('Update area failed', e, 'Không cập nhật được khu vực');
+    }
+  };
+
   // --- SHIFT HANDLERS ---
   const handleAddShift = async (name: string, startTime: string, endTime: string, type: any, applicableAreaIds: string[]) => {
     const newShift: Shift = {
@@ -519,20 +686,38 @@ export default function App() {
 
   // --- CLONE/DAILY TASK GENERATOR ---
   const handleCloneChecklistsToToday = async () => {
-    // For now, simply reload runs (cloning logic would require template-level API)
+    // Reload runs to refresh the list with latest data from backend
     await loadRunsFromApi();
-    addNotification('Thông báo', 'Dữ liệu checklist đã được làm mới từ hệ thống', 'NORMAL');
+    addNotification('Đã làm mới', 'Danh sách công việc đã được cập nhật từ hệ thống', 'SUCCESS');
   };
 
-  const handleUpdateIncidentStatus = async (id: string, s: IncidentStatus) => {
+  const handleUpdateIncidentStatus = async (id: string, s: IncidentStatus, resolutionNote?: string) => {
     try {
-      await incidentService.update(Number(id), { status: s });
+      await incidentService.update(Number(id), { status: s, resolution_note: resolutionNote });
       await loadIncidentsFromApi();
       if (s === IncidentStatus.RESOLVED) {
         addNotification('Đã xử lý', 'Sự cố đã được đánh dấu hoàn thành', 'SUCCESS');
       }
     } catch (e: any) {
-      reportError('Update incident failed', e, 'Không cập nhật được sự cố');
+      // If 404, the incident no longer exists - just reload to refresh the list
+      if (e.message?.includes('404') || e.statusCode === 404) {
+        if (import.meta.env.DEV) console.log(`Incident ${id} not found, refreshing list...`);
+        await loadIncidentsFromApi();
+        addNotification('Đã làm mới', 'Danh sách sự cố đã được cập nhật', 'NORMAL');
+      } else {
+        reportError('Update incident failed', e, 'Không cập nhật được sự cố');
+      }
+    }
+  };
+
+  const handleAssignIncident = async (id: string, userId: number) => {
+    try {
+      await incidentService.assign(Number(id), userId);
+      await loadIncidentsFromApi();
+      const assignedUser = users.find(u => String(u.id) === String(userId));
+      addNotification('Đã gán', `Sự cố đã được gán cho ${assignedUser?.name || 'người dùng'}`, 'SUCCESS');
+    } catch (e: any) {
+      reportError('Assign incident failed', e, 'Không gán được sự cố');
     }
   };
 
@@ -652,7 +837,7 @@ export default function App() {
       case 'dashboard':
         return (
           <Suspense fallback={<LoadingFallback />}>
-            <Dashboard user={user} checklists={checklists} incidents={incidents} onChangeTab={setCurrentTab} onLogout={handleLogout} onOpenScanner={() => setShowScanner(true)} />
+            <Dashboard user={user} users={users} checklists={checklists} incidents={incidents} onChangeTab={setCurrentTab} onLogout={handleLogout} onOpenScanner={() => setShowScanner(true)} />
           </Suspense>
         );
       case 'checklists':
@@ -664,7 +849,8 @@ export default function App() {
             const detail = await runService.get(runId);
             const areaList = areas.length ? areas : await loadAreasFromApi();
             const mapped = mapRunToChecklist(detail, areaList);
-            const columns = detail.columns || [];
+            // API trả về cột nằm trong template.columns (không phải detail.columns)
+            const columns = (detail as any).columns || detail.template?.columns || [];
             const roles = detail.roles || [];
             const lowerRole = (user.role || '').toLowerCase();
             const matchedColumn = columns.find((c: any) => {
@@ -673,7 +859,7 @@ export default function App() {
               const colRole = roles.find((r: any) => String(r.id) === String(c.role_id));
               return colRole ? (colRole.name || '').toLowerCase() === lowerRole : false;
             }) || columns[0];
-            const columnId = matchedColumn?.id || detail.run?.id || runId;
+            const columnId = matchedColumn?.id || runId; // column_id phải khớp template_columns.id
             const sessionId = matchedColumn?.session_id || detail.sessions?.[0]?.id;
             const roleId = matchedColumn?.role_id || roles.find((r: any) => (r.name || '').toLowerCase() === lowerRole)?.id;
             setActiveChecklist(mapped);
@@ -691,9 +877,11 @@ export default function App() {
             <Incidents 
             incidents={incidents} 
             currentUser={user}
+            users={users}
             areas={areas}
             onUpdateStatus={handleUpdateIncidentStatus}
             onCreateIncident={handleCreateIncident}
+            onAssignIncident={handleAssignIncident}
           />
           </Suspense>
         );
@@ -719,11 +907,14 @@ export default function App() {
             onAddChecklist={handleAddChecklist} 
             onAssignChecklist={handleAssignChecklist}
             onAddArea={handleAddArea}
+            onUpdateArea={handleUpdateArea}
             onDeleteArea={handleDeleteArea}
             onAddShift={handleAddShift}
             onDeleteShift={handleDeleteShift}
             onCloneDaily={handleCloneChecklistsToToday} 
             onCreateTemplate={handleCreateTemplate}
+            onRunsChanged={loadRunsFromApi}
+            onTemplatesChanged={loadTemplatesFromApi}
           />
           </Suspense>
         );
@@ -751,7 +942,7 @@ export default function App() {
       default:
         return (
           <Suspense fallback={<LoadingFallback />}>
-            <Dashboard user={user} checklists={checklists} incidents={incidents} onChangeTab={setCurrentTab} onLogout={handleLogout} onOpenScanner={() => setShowScanner(true)} />
+            <Dashboard user={user} users={users} checklists={checklists} incidents={incidents} onChangeTab={setCurrentTab} onLogout={handleLogout} onOpenScanner={() => setShowScanner(true)} />
           </Suspense>
         );
     }
@@ -760,7 +951,14 @@ export default function App() {
   return (
     <div className="max-w-md mx-auto bg-gray-50 min-h-screen shadow-2xl overflow-hidden relative">
       <div className="pb-20">{renderContent()}</div>
-      {!activeChecklistId && <Navigation currentTab={currentTab} onTabChange={setCurrentTab} role={user.role} />}
+      {!activeChecklistId && (
+        <Navigation 
+          currentTab={currentTab} 
+          onTabChange={setCurrentTab} 
+          role={user.role} 
+          pendingReviewCount={pendingReviewCount}
+        />
+      )}
       
       {/* QR Scanner Overlay */}
       {showScanner && (

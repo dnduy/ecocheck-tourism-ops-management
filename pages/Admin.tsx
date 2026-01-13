@@ -1,7 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, Role, Checklist, Area, Shift } from '../types';
-import { Plus, X, Users, ClipboardList, UserCheck, AlertCircle, Mail, Lock, Trash2, Eye, EyeOff, Shield, Edit2, Save, PlusCircle, MinusCircle, ShieldCheck, KeyRound, MapPin, QrCode, Copy, Clock, Layers } from 'lucide-react';
+import { templateService } from '../services/templateService';
+import { runService } from '../services/runService';
+import { AdminStaffStats } from '../components/AdminStaffStats';
+import { AdminSupervisorStats } from '../components/AdminSupervisorStats';
+import { Plus, X, Users, ClipboardList, UserCheck, AlertCircle, Lock, Trash2, Eye, EyeOff, Edit, Edit2, PlusCircle, MinusCircle, ShieldCheck, KeyRound, MapPin, QrCode, Copy, Clock, Layers, TrendingUp, BarChart3 } from 'lucide-react';
 
 interface AdminProps {
   currentUser: User;
@@ -16,11 +20,14 @@ interface AdminProps {
   onAddChecklist: (templateName: string, areaId: string, shift: string, items: {text: string, isCritical: boolean}[], assignedTo?: string, verifiedBy?: string) => void;
   onAssignChecklist?: (checklistId: string, updates: { assignedTo?: string, verifiedBy?: string }) => void;
   onAddArea?: (name: string, type: string) => void;
+  onUpdateArea?: (id: string, name: string, type: string) => void;
   onDeleteArea?: (id: string) => void;
   onAddShift?: (name: string, startTime: string, endTime: string, type: any, applicableAreaIds: string[]) => void;
   onDeleteShift?: (id: string) => void;
   onCloneDaily?: () => void; 
   onCreateTemplate?: (data: { name: string; description?: string; groupTitle: string; itemTitles: string[]; columnLabel: string }) => void;
+  onRunsChanged?: () => void;
+  onTemplatesChanged?: () => void;
 }
 
 export const Admin: React.FC<AdminProps> = ({ 
@@ -28,15 +35,20 @@ export const Admin: React.FC<AdminProps> = ({
   users, checklists = [], areas = [], templates = [], shifts = [],
   onAddUser, onUpdateUser, onDeleteUser, 
   onAddChecklist, onAssignChecklist,
-  onAddArea, onDeleteArea,
+  onAddArea, onUpdateArea, onDeleteArea,
   onAddShift, onDeleteShift,
   onCloneDaily,
-  onCreateTemplate
+  onCreateTemplate,
+  onRunsChanged,
+  onTemplatesChanged
 }) => {
   // Determine available tabs based on Role
   const getAvailableTabs = () => {
     if (currentUser.role === Role.MANAGER) {
       return [
+        { id: 'STAFF_STATS', label: 'Thống kê NS', icon: BarChart3 },
+        { id: 'SUPERVISOR_STATS', label: 'Thống kê GS', icon: TrendingUp },
+        { id: 'ASSIGN_WORK', label: 'Gán việc', icon: UserCheck },
         { id: 'USERS', label: 'NS', icon: Users },
         { id: 'AREAS', label: 'Khu vực', icon: MapPin },
         { id: 'SHIFTS', label: 'Ca trực', icon: Clock },
@@ -44,8 +56,10 @@ export const Admin: React.FC<AdminProps> = ({
         { id: 'TEMPLATES', label: 'Template', icon: Layers }
       ];
     } else if (currentUser.role === Role.SUPERVISOR) {
-      // Supervisor only manages Shifts & Checklists (Operational)
+      // Supervisor can also assign work
       return [
+        { id: 'STAFF_STATS', label: 'Thống kê NS', icon: BarChart3 },
+        { id: 'ASSIGN_WORK', label: 'Gán việc', icon: UserCheck },
         { id: 'SHIFTS', label: 'Ca trực', icon: Clock },
         { id: 'CHECKLISTS', label: 'Mẫu', icon: ClipboardList }
       ];
@@ -56,6 +70,7 @@ export const Admin: React.FC<AdminProps> = ({
   const availableTabs = getAvailableTabs();
   const [activeTab, setActiveTab] = useState<string>(availableTabs.length > 0 ? availableTabs[0].id : '');
   
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (availableTabs.length > 0 && !availableTabs.find(t => t.id === activeTab)) {
       setActiveTab(availableTabs[0].id);
@@ -71,6 +86,7 @@ export const Admin: React.FC<AdminProps> = ({
 
   // Area Modal State
   const [showAreaModal, setShowAreaModal] = useState(false);
+  const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
   const [areaData, setAreaData] = useState({ name: '', type: 'F&B' });
 
   // Template Modal State
@@ -91,6 +107,40 @@ export const Admin: React.FC<AdminProps> = ({
     items: [{ text: '', isCritical: false }]
   });
 
+  // Assign Work Modal State
+  const [showAssignWorkModal, setShowAssignWorkModal] = useState(false);
+  const [assignWorkData, setAssignWorkData] = useState({
+    templateId: '',
+    areaId: '',
+    assignedTo: '',
+    verifiedBy: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+
+  // Edit Template Modal State
+  const [showEditTemplateModal, setShowEditTemplateModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+  const [editTemplateData, setEditTemplateData] = useState<{
+    name: string;
+    description: string;
+    is_active: boolean;
+    groups: Array<{
+      id?: number;
+      title: string;
+      items: Array<{ id?: number; title: string; is_critical: boolean; instructions?: string }>;
+    }>;
+    columns: Array<{ id?: number; label: string; type?: string; options?: string }>;
+  }>({
+    name: '',
+    description: '',
+    is_active: true,
+    groups: [],
+    columns: []
+  });
+
+  // Loading States
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Handlers
   const handleOpenUserModal = (u?: User) => {
     if (u) {
@@ -103,34 +153,49 @@ export const Admin: React.FC<AdminProps> = ({
     setShowUserModal(true);
   };
 
-  const handleSubmitUser = () => {
+  const handleSubmitUser = async () => {
     if (!userData.name || !userData.email) {
       alert("Vui lòng nhập tên và email");
       return;
     }
     
-    if (editingUserId) {
-      const updates: Partial<User> = {
-        name: userData.name,
-        email: userData.email,
-        role: userData.role
-      };
-      if (userData.password && userData.password.trim() !== '') {
-        updates.password = userData.password;
+    setIsSubmitting(true);
+    try {
+      if (editingUserId) {
+        const updates: Partial<User> = {
+          name: userData.name,
+          email: userData.email,
+          role: userData.role
+        };
+        if (userData.password && userData.password.trim() !== '') {
+          updates.password = userData.password;
+        }
+        await onUpdateUser(editingUserId, updates);
+      } else {
+        if (!userData.password) { alert("Phải có mật khẩu cho người dùng mới"); return; }
+        await onAddUser(userData.name, userData.email, userData.role, userData.password);
       }
-      onUpdateUser(editingUserId, updates);
-    } else {
-      if (!userData.password) { alert("Phải có mật khẩu cho người dùng mới"); return; }
-      onAddUser(userData.name, userData.email, userData.role, userData.password);
+      setShowUserModal(false);
+    } finally {
+      setIsSubmitting(false);
     }
-    setShowUserModal(false);
   };
 
-  const handleSubmitArea = () => {
+  const handleSubmitArea = async () => {
     if (!areaData.name) { alert("Vui lòng nhập tên khu vực"); return; }
-    onAddArea?.(areaData.name, areaData.type);
-    setAreaData({ name: '', type: 'F&B' });
-    setShowAreaModal(false);
+    setIsSubmitting(true);
+    try {
+      if (editingAreaId) {
+        await onUpdateArea?.(editingAreaId, areaData.name, areaData.type);
+      } else {
+        await onAddArea?.(areaData.name, areaData.type);
+      }
+      setAreaData({ name: '', type: 'F&B' });
+      setEditingAreaId(null);
+      setShowAreaModal(false);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSubmitShift = () => {
@@ -186,6 +251,206 @@ export const Admin: React.FC<AdminProps> = ({
     return shifts.filter(s => s.applicableAreaIds.length === 0 || s.applicableAreaIds.includes(areaId));
   };
 
+  // Handler for Assign Work
+  const handleSubmitAssignWork = async () => {
+    const { templateId, areaId, assignedTo, verifiedBy, date } = assignWorkData;
+    if (!templateId || !areaId || !date) {
+      alert('Vui lòng điền đầy đủ: Template, Khu vực và Ngày.');
+      return;
+    }
+    
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/runs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('api_token')}`
+        },
+        body: JSON.stringify({
+          checklist_template_id: templateId,
+          area_id: areaId,
+          assigned_to: assignedTo || null,
+          verified_by: verifiedBy || null,
+          scheduled_for: date
+        })
+      });
+
+      if (!response.ok) throw new Error('Không thể tạo công việc');
+      
+      alert('✅ Đã gán việc thành công!');
+      setShowAssignWorkModal(false);
+      setAssignWorkData({
+        templateId: '', areaId: '', assignedTo: '', verifiedBy: '',
+        date: new Date().toISOString().split('T')[0]
+      });
+      
+      // Notify parent to reload runs
+      if (onRunsChanged) onRunsChanged();
+    } catch (error) {
+      alert('❌ Lỗi: ' + (error as Error).message);
+    }
+  };
+
+  // Handler for Edit Template
+  const handleOpenEditTemplate = (template: any) => {
+    setEditingTemplate(template);
+    setEditTemplateData({
+      name: template.name || '',
+      description: template.description || '',
+      is_active: !!template.is_active,
+      groups: template.groups?.map((g: any) => ({
+        id: g.id,
+        title: g.title || '',
+        items: g.items?.map((i: any) => ({
+          id: i.id,
+          title: i.title || '',
+          is_critical: i.is_critical || false,
+          instructions: i.instructions || ''
+        })) || []
+      })) || []
+      ,
+      columns: template.columns?.map((c: any) => ({
+        id: c.id,
+        label: c.label || '',
+        type: c.type || 'text',
+        options: Array.isArray(c.options) ? c.options.join(',') : (c.options || '')
+      })) || []
+    });
+    setShowEditTemplateModal(true);
+  };
+
+  const handleSaveEditTemplate = async () => {
+    if (!editTemplateData.name) {
+      alert('Vui lòng nhập tên template');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        name: editTemplateData.name,
+        description: editTemplateData.description,
+        is_active: editTemplateData.is_active,
+        groups: editTemplateData.groups.map(g => ({
+          id: g.id,
+          title: g.title,
+          items: g.items.map(i => ({
+            id: i.id,
+            title: i.title,
+            instructions: i.instructions,
+            is_critical: i.is_critical
+          }))
+        })),
+        columns: editTemplateData.columns.map(c => ({
+          id: c.id,
+          label: c.label,
+          type: c.type || 'text',
+          options: (c.options || '').split(',').map(o => o.trim()).filter(Boolean)
+        }))
+      };
+
+      await templateService.update(editingTemplate.id, payload as any);
+
+      alert('✅ Đã cập nhật template thành công!');
+      setShowEditTemplateModal(false);
+      if (onTemplatesChanged) onTemplatesChanged();
+    } catch (error) {
+      alert('❌ Lỗi: ' + (error as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (id: number) => {
+    if (!window.confirm('Xác nhận xóa template này? Hành động này sẽ xóa cả nhóm, hạng mục và checklist liên quan.')) return;
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/templates/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('api_token')}`
+        }
+      });
+      if (!response.ok && response.status !== 204) throw new Error('Không thể xóa template');
+      alert('✅ Đã xóa template');
+      if (onTemplatesChanged) onTemplatesChanged();
+    } catch (error) {
+      alert('❌ Lỗi: ' + (error as Error).message);
+    }
+  };
+
+  const handleDeleteRun = async (runId: string) => {
+    if (!window.confirm('Xác nhận xóa checklist này?')) return;
+    try {
+      await runService.delete(Number(runId));
+      alert('✅ Đã xóa checklist');
+      if (onRunsChanged) onRunsChanged();
+    } catch (error) {
+      alert('❌ Lỗi: ' + (error as Error).message);
+    }
+  };
+
+  const _handleAddGroupToTemplate = () => {
+    setEditTemplateData({
+      ...editTemplateData,
+      groups: [...editTemplateData.groups, { title: '', items: [{ title: '', is_critical: false, instructions: '' }] }]
+    });
+  };
+
+  const _handleRemoveGroupFromTemplate = (groupIdx: number) => {
+    setEditTemplateData({
+      ...editTemplateData,
+      groups: editTemplateData.groups.filter((_, i) => i !== groupIdx)
+    });
+  };
+
+  const _handleAddItemToGroup = (groupIdx: number) => {
+    const newGroups = [...editTemplateData.groups];
+    newGroups[groupIdx].items.push({ title: '', is_critical: false, instructions: '' });
+    setEditTemplateData({ ...editTemplateData, groups: newGroups });
+  };
+
+  const _handleRemoveItemFromGroup = (groupIdx: number, itemIdx: number) => {
+    const newGroups = [...editTemplateData.groups];
+    newGroups[groupIdx].items = newGroups[groupIdx].items.filter((_, i) => i !== itemIdx);
+    setEditTemplateData({ ...editTemplateData, groups: newGroups });
+  };
+
+  const _handleUpdateGroupTitle = (groupIdx: number, title: string) => {
+    const newGroups = [...editTemplateData.groups];
+    newGroups[groupIdx].title = title;
+    setEditTemplateData({ ...editTemplateData, groups: newGroups });
+  };
+
+  const _handleUpdateItem = (groupIdx: number, itemIdx: number, field: 'title' | 'instructions' | 'is_critical', value: any) => {
+    const newGroups = [...editTemplateData.groups];
+    if (field === 'is_critical') {
+      newGroups[groupIdx].items[itemIdx].is_critical = !!value;
+    } else {
+      (newGroups[groupIdx].items[itemIdx] as any)[field] = value;
+    }
+    setEditTemplateData({ ...editTemplateData, groups: newGroups });
+  };
+
+  const _handleAddColumn = () => {
+    setEditTemplateData({
+      ...editTemplateData,
+      columns: [...editTemplateData.columns, { label: '', type: 'text', options: '' }]
+    });
+  };
+
+  const _handleRemoveColumn = (idx: number) => {
+    setEditTemplateData({
+      ...editTemplateData,
+      columns: editTemplateData.columns.filter((_, i) => i !== idx)
+    });
+  };
+
+  const _handleUpdateColumn = (idx: number, field: 'label' | 'type' | 'options', value: string) => {
+    const newCols = [...editTemplateData.columns];
+    (newCols[idx] as any)[field] = value;
+    setEditTemplateData({ ...editTemplateData, columns: newCols });
+  };
+
   // Security check render
   if (availableTabs.length === 0) {
     return (
@@ -223,6 +488,26 @@ export const Admin: React.FC<AdminProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto pr-1">
+        {/* --- TAB: STAFF STATS --- */}
+        {activeTab === 'STAFF_STATS' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-1">
+              <h2 className="font-bold text-gray-800">Thống Kê Nhân Viên</h2>
+            </div>
+            <AdminStaffStats />
+          </div>
+        )}
+
+        {/* --- TAB: SUPERVISOR STATS --- */}
+        {activeTab === 'SUPERVISOR_STATS' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-1">
+              <h2 className="font-bold text-gray-800">Thống Kê Giám Sát</h2>
+            </div>
+            <AdminSupervisorStats />
+          </div>
+        )}
+
         {/* --- TAB: USERS --- */}
         {activeTab === 'USERS' && (
           <div className="space-y-4">
@@ -280,9 +565,21 @@ export const Admin: React.FC<AdminProps> = ({
                          </div>
                        </div>
                     </div>
-                    <button onClick={() => onDeleteArea?.(area.id)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl">
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => {
+                          setEditingAreaId(String(area.id));
+                          setAreaData({ name: area.name, type: area.type });
+                          setShowAreaModal(true);
+                        }}
+                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button onClick={() => onDeleteArea?.(String(area.id))} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {areas.length === 0 && <p className="text-center text-gray-400 text-xs py-4">Chưa có khu vực nào.</p>}
@@ -352,14 +649,17 @@ export const Admin: React.FC<AdminProps> = ({
               <div className="bg-gradient-to-r from-brand-600 to-brand-800 p-4 rounded-2xl text-white shadow-lg mb-4">
                 <div className="flex justify-between items-center">
                   <div>
-                    <h3 className="font-bold text-sm">Vận hành hàng ngày</h3>
-                    <p className="text-[10px] text-brand-100 opacity-90">Tự động sao chép các mẫu Checklist sang ngày hôm nay.</p>
+                    <h3 className="font-bold text-sm">Làm mới dữ liệu</h3>
+                    <p className="text-[10px] text-brand-100 opacity-90">Tải lại danh sách công việc từ hệ thống để cập nhật trạng thái mới nhất.</p>
                   </div>
                   <button 
                     onClick={onCloneDaily}
                     className="bg-white text-brand-700 px-3 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-brand-50 active:scale-95 transition-transform flex items-center gap-1"
                   >
-                    <Copy size={14}/> Tạo công việc mới
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Làm mới
                   </button>
                 </div>
               </div>
@@ -382,7 +682,10 @@ export const Admin: React.FC<AdminProps> = ({
                         <h3 className="font-bold text-gray-900 text-sm">{cl.templateName}</h3>
                         <p className="text-[10px] text-gray-500">{cl.area.name} • {cl.shift}</p>
                       </div>
-                      {isUnassigned && <AlertCircle size={16} className="text-red-400" />}
+                      <div className="flex items-center gap-2">
+                        {isUnassigned && <AlertCircle size={16} className="text-red-400" />}
+                        <button onClick={() => handleDeleteRun(cl.id)} className="text-red-400 hover:text-red-600 transition-colors"><Trash2 size={14}/></button>
+                      </div>
                     </div>
                     
                     <div className="grid grid-cols-1 gap-3">
@@ -440,9 +743,23 @@ export const Admin: React.FC<AdminProps> = ({
                       <h3 className="font-bold text-gray-900 text-sm">{t.name}</h3>
                       <p className="text-[10px] text-gray-500">Version: {t.version || 'v1'} • {t.is_active ? 'Active' : 'Inactive'}</p>
                     </div>
-                    <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${t.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {t.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${t.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {t.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                      <button 
+                        onClick={() => handleOpenEditTemplate(t)}
+                        className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-bold hover:bg-blue-100 flex items-center gap-1"
+                      >
+                        <Edit size={12} /> Sửa
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteTemplate(t.id)}
+                        className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-lg font-bold hover:bg-red-100 flex items-center gap-1"
+                      >
+                        <Trash2 size={12} /> Xóa
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 text-[10px] text-gray-500">
                     <span>Nhóm: {t.groups?.length || 0}</span>
@@ -454,6 +771,36 @@ export const Admin: React.FC<AdminProps> = ({
               {templates.length === 0 && (
                 <p className="text-center text-gray-400 text-xs py-6">Chưa có template nào.</p>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB: ASSIGN WORK --- */}
+        {activeTab === 'ASSIGN_WORK' && (
+          <div className="space-y-4">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-700 p-4 rounded-2xl text-white shadow-lg mb-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="font-bold text-sm">Gán việc mới</h3>
+                  <p className="text-[10px] text-blue-100 opacity-90">Tạo công việc mới cho nhân viên từ template có sẵn.</p>
+                </div>
+                <button 
+                  onClick={() => setShowAssignWorkModal(true)}
+                  className="bg-white text-purple-700 px-3 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-purple-50 active:scale-95 transition-transform flex items-center gap-1"
+                >
+                  <UserCheck size={14}/> Gán việc
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="font-bold text-gray-800 text-sm mb-2">Hướng dẫn</h3>
+              <ul className="text-xs text-gray-600 space-y-1 list-disc list-inside">
+                <li>Chọn template checklist có sẵn</li>
+                <li>Chọn khu vực thực hiện</li>
+                <li>Chọn nhân viên thực hiện và người kiểm tra (nếu có)</li>
+                <li>Chọn ngày thực hiện công việc</li>
+              </ul>
             </div>
           </div>
         )}
@@ -501,8 +848,12 @@ export const Admin: React.FC<AdminProps> = ({
                   {Object.values(Role).map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
-              <button onClick={handleSubmitUser} className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-lg shadow-brand-100 active:scale-95 transition-all mt-4">
-                {editingUserId ? 'Lưu thay đổi' : 'Tạo tài khoản'}
+              <button 
+                onClick={handleSubmitUser} 
+                disabled={isSubmitting}
+                className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-lg shadow-brand-100 active:scale-95 transition-all mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? '⏳ Đang lưu...' : (editingUserId ? 'Lưu thay đổi' : 'Tạo tài khoản')}
               </button>
             </div>
           </div>
@@ -514,8 +865,12 @@ export const Admin: React.FC<AdminProps> = ({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 duration-200">
              <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Thêm khu vực mới</h3>
-              <button onClick={() => setShowAreaModal(false)} className="text-gray-400"><X size={24}/></button>
+              <h3 className="text-lg font-bold text-gray-900">{editingAreaId ? 'Sửa khu vực' : 'Thêm khu vực mới'}</h3>
+              <button onClick={() => {
+                setShowAreaModal(false);
+                setEditingAreaId(null);
+                setAreaData({ name: '', type: 'F&B' });
+              }} className="text-gray-400"><X size={24}/></button>
             </div>
             <div className="space-y-4">
               <div className="space-y-1">
@@ -533,8 +888,12 @@ export const Admin: React.FC<AdminProps> = ({
                   <option value="General">General (Khác)</option>
                 </select>
               </div>
-              <button onClick={handleSubmitArea} className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-lg shadow-brand-100 active:scale-95 transition-all mt-4">
-                Lưu khu vực
+              <button 
+                onClick={handleSubmitArea} 
+                disabled={isSubmitting}
+                className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-lg shadow-brand-100 active:scale-95 transition-all mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? '⏳ Đang lưu...' : (editingAreaId ? 'Cập nhật' : 'Lưu khu vực')}
               </button>
             </div>
           </div>
@@ -809,6 +1168,232 @@ export const Admin: React.FC<AdminProps> = ({
                 className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-lg shadow-brand-200 active:scale-95 transition-all mt-2"
               >
                 Lưu template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ASSIGN WORK MODAL */}
+      {showAssignWorkModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-gray-900">Gán việc mới</h3>
+              <button onClick={() => setShowAssignWorkModal(false)} className="text-gray-400"><X size={24}/></button>
+            </div>
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Template Checklist *</label>
+                <select 
+                  value={assignWorkData.templateId} 
+                  onChange={e => setAssignWorkData({...assignWorkData, templateId: e.target.value})}
+                  className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
+                >
+                  <option value="">-- Chọn template --</option>
+                  {templates.filter((t: any) => t.is_active).map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Khu vực *</label>
+                <select 
+                  value={assignWorkData.areaId} 
+                  onChange={e => setAssignWorkData({...assignWorkData, areaId: e.target.value})}
+                  className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
+                >
+                  <option value="">-- Chọn khu vực --</option>
+                  {areas.map(a => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Người thực hiện (tùy chọn)</label>
+                <select 
+                  value={assignWorkData.assignedTo} 
+                  onChange={e => setAssignWorkData({...assignWorkData, assignedTo: e.target.value})}
+                  className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
+                >
+                  <option value="">-- Chưa phân công --</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Người kiểm tra (tùy chọn)</label>
+                <select 
+                  value={assignWorkData.verifiedBy} 
+                  onChange={e => setAssignWorkData({...assignWorkData, verifiedBy: e.target.value})}
+                  className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
+                >
+                  <option value="">-- Chưa phân công --</option>
+                  {users.filter(u => u.role !== Role.STAFF).map(u => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Ngày thực hiện *</label>
+                <input 
+                  type="date" 
+                  value={assignWorkData.date}
+                  onChange={e => setAssignWorkData({...assignWorkData, date: e.target.value})}
+                  className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
+                />
+              </div>
+
+              <button 
+                onClick={handleSubmitAssignWork}
+                className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-all mt-2"
+              >
+                ✓ Tạo công việc
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT TEMPLATE MODAL */}
+      {showEditTemplateModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-gray-900">Chỉnh sửa Template: {editTemplateData.name}</h3>
+              <button onClick={() => setShowEditTemplateModal(false)} className="text-gray-400"><X size={24}/></button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Tên Template *</label>
+                <input 
+                  type="text" 
+                  value={editTemplateData.name}
+                  onChange={e => setEditTemplateData({...editTemplateData, name: e.target.value})}
+                  className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
+                  placeholder="Tên template"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Mô tả</label>
+                <textarea 
+                  value={editTemplateData.description}
+                  onChange={e => setEditTemplateData({...editTemplateData, description: e.target.value})}
+                  className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
+                  rows={2}
+                  placeholder="Mô tả template"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Trạng thái</label>
+                <button
+                  onClick={() => setEditTemplateData({ ...editTemplateData, is_active: !editTemplateData.is_active })}
+                  className={`text-xs px-3 py-1 rounded-full font-bold ${editTemplateData.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}
+                >
+                  {editTemplateData.is_active ? 'Đang hoạt động' : 'Đang tắt'}
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nhóm và hạng mục</label>
+                  <div className="flex gap-2">
+                    <button onClick={_handleAddGroupToTemplate} className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded-lg font-bold flex items-center gap-1"><PlusCircle size={12}/> Nhóm</button>
+                  </div>
+                </div>
+
+                {editTemplateData.groups.map((group, gIdx) => (
+                  <div key={gIdx} className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-3">
+                    <div className="flex gap-2 items-center">
+                      <input 
+                        type="text"
+                        value={group.title}
+                        onChange={e => _handleUpdateGroupTitle(gIdx, e.target.value)}
+                        className="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-sm font-bold"
+                        placeholder={`Tên nhóm ${gIdx + 1}`}
+                      />
+                      <button onClick={() => _handleRemoveGroupFromTemplate(gIdx)} className="text-red-500 hover:text-red-700 text-xs"><Trash2 size={14}/></button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {group.items.map((item, iIdx) => (
+                        <div key={iIdx} className="flex gap-2 items-center">
+                          <input 
+                            type="text"
+                            value={item.title}
+                            onChange={e => _handleUpdateItem(gIdx, iIdx, 'title', e.target.value)}
+                            className="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-xs"
+                            placeholder={`Hạng mục ${iIdx + 1}`}
+                          />
+                          <input 
+                            type="text"
+                            value={item.instructions || ''}
+                            onChange={e => _handleUpdateItem(gIdx, iIdx, 'instructions', e.target.value)}
+                            className="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-xs"
+                            placeholder="Hướng dẫn (tuỳ chọn)"
+                          />
+                          <label className="flex items-center gap-1 text-xs">
+                            <input 
+                              type="checkbox"
+                              checked={item.is_critical}
+                              onChange={e => _handleUpdateItem(gIdx, iIdx, 'is_critical', e.target.checked)}
+                              className="rounded"
+                            />
+                            <span className="text-red-600 font-bold">Critical</span>
+                          </label>
+                          <button onClick={() => _handleRemoveItemFromGroup(gIdx, iIdx)} className="text-red-500 hover:text-red-700 text-xs"><MinusCircle size={14}/></button>
+                        </div>
+                      ))}
+                      <button onClick={() => _handleAddItemToGroup(gIdx)} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-lg font-bold flex items-center gap-1"><PlusCircle size={12}/> Hạng mục</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Cột (phân vai/ca)</label>
+                  <button onClick={_handleAddColumn} className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-lg font-bold flex items-center gap-1"><PlusCircle size={12}/> Cột</button>
+                </div>
+                {editTemplateData.columns.map((col, idx) => (
+                  <div key={idx} className="flex flex-col md:flex-row gap-2 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                    <input
+                      value={col.label}
+                      onChange={e => _handleUpdateColumn(idx, 'label', e.target.value)}
+                      className="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-xs"
+                      placeholder="Tên cột (ví dụ: Ca A / Giám sát)"
+                    />
+                    <input
+                      value={col.type || 'text'}
+                      onChange={e => _handleUpdateColumn(idx, 'type', e.target.value)}
+                      className="w-32 p-2 bg-white border border-gray-200 rounded-lg text-xs"
+                      placeholder="Loại"
+                    />
+                    <input
+                      value={col.options || ''}
+                      onChange={e => _handleUpdateColumn(idx, 'options', e.target.value)}
+                      className="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-xs"
+                      placeholder="Options (phân tách dấu phẩy)"
+                    />
+                    <button onClick={() => _handleRemoveColumn(idx)} className="text-red-500 hover:text-red-700 text-xs self-start"><Trash2 size={14}/></button>
+                  </div>
+                ))}
+              </div>
+
+              <button 
+                onClick={handleSaveEditTemplate}
+                disabled={isSubmitting}
+                className="w-full py-4 bg-gradient-to-r from-green-600 to-blue-700 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? '⏳ Đang lưu...' : '✓ Lưu thay đổi'}
               </button>
             </div>
           </div>

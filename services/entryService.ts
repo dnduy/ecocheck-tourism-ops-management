@@ -21,6 +21,6 @@ export interface EntryResponse {
 
 export const entryService = {
   async upsert(data: EntryData): Promise<EntryResponse> {
-    return apiPut<EntryResponse>('/cells', data);
+    return apiPut<EntryResponse>('/entries', data);
   }
 };

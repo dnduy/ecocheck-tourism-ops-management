@@ -31,7 +31,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) 
           onScanSuccess(decodedText);
         }).catch(err => console.error("Failed to clear scanner", err));
       },
-      (errorMessage) => {
+      (_errorMessage) => {
         // parse error, ignore it.
       }
     );

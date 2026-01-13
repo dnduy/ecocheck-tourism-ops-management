@@ -46,11 +46,37 @@ export const dashboardService = {
   },
 
   async getWeeklyStats(): Promise<WeeklyStats[]> {
-    // Mock for now - would need backend endpoint
-    const days = ['T.Hai', 'T.Ba', 'T.Tư', 'T.Năm', 'T.Sáu', 'T.Bảy', 'CN'];
-    return days.map(day => ({
-      day,
-      completed: Math.floor(Math.random() * 30) + 40
-    }));
+    try {
+      // Try to get real data from runs with date filtering
+      const runsResponse = await apiGet<any>('/runs');
+      const runs = runsResponse.data || [];
+      
+      // Get last 7 days
+      const today = new Date();
+      const days = ['CN', 'T.Hai', 'T.Ba', 'T.Tư', 'T.Năm', 'T.Sáu', 'T.Bảy'];
+      const last7Days: WeeklyStats[] = [];
+      
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dayOfWeek = days[date.getDay()];
+        const dateStr = date.toISOString().split('T')[0];
+        
+        // Count completed runs for this date
+        const completed = runs.filter((r: any) => {
+          if (!r.completed_at && !r.updated_at) return false;
+          const runDate = new Date(r.completed_at || r.updated_at).toISOString().split('T')[0];
+          return runDate === dateStr && r.status === 'completed';
+        }).length;
+        
+        last7Days.push({ day: dayOfWeek, completed });
+      }
+      
+      return last7Days;
+    } catch (e) {
+      console.error('Failed to get weekly stats:', e);
+      // Return empty array instead of mock data
+      return [];
+    }
   }
 };

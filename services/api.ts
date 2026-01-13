@@ -44,6 +44,7 @@ export const apiCall = async <T = any>(
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
     ...(fetchOptions.headers as HeadersInit)
   };

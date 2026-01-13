@@ -1,4 +1,3 @@
-/// <reference types="vitest" />
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../services/api';
 import { getErrorMessage } from '../services/errorUtils';

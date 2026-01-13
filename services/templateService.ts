@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './api';
+import { apiGet, apiPost, apiPut, apiDelete } from './api';
 
 export interface TemplateColumnInput {
   label: string;
@@ -7,8 +7,9 @@ export interface TemplateColumnInput {
 }
 
 export interface TemplateGroupInput {
+  id?: number;
   title: string;
-  items: Array<{ title: string; instructions?: string }>;
+  items: Array<{ id?: number; title: string; instructions?: string }>;
 }
 
 export interface TemplateCreateInput {
@@ -19,6 +20,8 @@ export interface TemplateCreateInput {
   groups: TemplateGroupInput[];
   columns: TemplateColumnInput[];
 }
+
+export interface TemplateUpdateInput extends Partial<TemplateCreateInput> {}
 
 export const templateService = {
   async list(): Promise<any[]> {
@@ -31,5 +34,13 @@ export const templateService = {
 
   async create(data: TemplateCreateInput): Promise<any> {
     return apiPost<any>('/templates', data);
+  },
+
+  async update(id: number, data: TemplateUpdateInput): Promise<any> {
+    return apiPut<any>(`/templates/${id}`, data);
+  },
+
+  async delete(id: number): Promise<void> {
+    await apiDelete<void>(`/templates/${id}`);
   }
 };

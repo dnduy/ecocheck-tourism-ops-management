@@ -24,7 +24,7 @@ class ChecklistTemplate extends Model
 
     public function groups(): HasMany
     {
-        return $this->hasMany(Group::class);
+        return $this->hasMany(Group::class, 'checklist_template_id');
     }
 
     public function columns(): HasMany

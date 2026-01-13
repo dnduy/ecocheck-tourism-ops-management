@@ -1,11 +1,13 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Checklist, ChecklistItem, ChecklistStatus, User } from '../types';
 import { entryService } from '../services/entryService';
 import { runService } from '../services/runService';
 import { signoffService } from '../services/signoffService';
+import { reviewService } from '../services/reviewService';
 import { sanitizeInput } from '../services/validation';
-import { ArrowLeft, Check, X, Camera, AlertTriangle, Info, ShieldCheck, UserCheck, ChevronRight, Plus, User as UserIcon } from 'lucide-react';
+import { useDebounce } from '../hooks/useDebounce';
+import { ArrowLeft, Check, X, AlertTriangle, Info, ShieldCheck, UserCheck, ChevronRight, Plus, Loader } from 'lucide-react';
 
 interface ChecklistExecutionProps {
   checklist: Checklist;
@@ -19,6 +21,9 @@ interface ChecklistExecutionProps {
 export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklist, currentUser, runContext, onBack, onComplete, onCreateIncident }) => {
   const [items, setItems] = useState<ChecklistItem[]>(checklist.items);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
   // Incident Reporting States
   const [reportingIncidentId, setReportingIncidentId] = useState<string | null>(null);
@@ -29,32 +34,93 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
   const [isReportingManual, setIsReportingManual] = useState(false);
   const [manualIncident, setManualIncident] = useState({ title: '', desc: '' });
 
-  const isExecutor = checklist.assignedTo === currentUser.id;
-  const isVerifier = checklist.verifiedBy === currentUser.id;
+  const isExecutor = String(checklist.assignedTo) === String(currentUser.id);
+  const isVerifier = String(checklist.verifiedBy) === String(currentUser.id);
   
   // Logic: Nhân viên chỉ có thể sửa nếu chưa COMPLETED. Verifier không thể sửa items, chỉ có thể Confirm.
   const isReadOnly = checklist.status === ChecklistStatus.REVIEWED || 
                      (isVerifier && checklist.status === ChecklistStatus.COMPLETED) ||
                      (!isExecutor && !isVerifier);
 
+  // Load run details and pre-fill existing entries
+  useEffect(() => {
+    const loadRunDetails = async () => {
+      if (!runContext) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const runDetail = await runService.get(runContext.runId);
+        
+        // Pre-fill items with existing entries
+        if (runDetail.entries && runDetail.entries.length > 0) {
+          setItems(prevItems => 
+            prevItems.map(item => {
+              const entry = runDetail.entries.find(
+                e => Number(e.item_id) === Number(item.id) && Number(e.column_id) === runContext.columnId
+              );
+              
+              if (entry) {
+                return {
+                  ...item,
+                  status: entry.value === 'ok' ? 'PASS' as const : entry.value === 'not_ok' ? 'FAIL' as const : item.status,
+                  note: entry.note || item.note
+                };
+              }
+              return item;
+            })
+          );
+          setLastSaved(new Date());
+        }
+      } catch (e) {
+        console.error('Failed to load run details:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadRunDetails();
+  }, [runContext]);
+
+  // Auto-save function with debounce
+  const saveEntry = useCallback(async (itemId: string, status: 'PASS' | 'FAIL', note?: string) => {
+    if (!runContext) return;
+    
+    setIsSaving(true);
+    try {
+      await entryService.upsert({
+        run_id: runContext.runId,
+        item_id: Number(itemId),
+        column_id: runContext.columnId,
+        value: status === 'PASS' ? 'ok' : 'not_ok',
+        note: note
+      });
+      setLastSaved(new Date());
+    } catch (e) {
+      console.error('Auto-save failed:', e);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [runContext]);
+
+  // Debounced save (500ms delay)
+  const debouncedSave = useDebounce(saveEntry, 500);
+
   const handleStatusChange = async (itemId: string, status: 'PASS' | 'FAIL') => {
     if (isReadOnly || checklist.status === ChecklistStatus.COMPLETED) return;
+    
+    // Update local state immediately for responsive UI
     setItems(prev => prev.map(item => item.id === itemId ? { ...item, status } : item));
+    
     if (status === 'PASS') {
       setReportingIncidentId(null);
     }
 
+    // Trigger debounced auto-save
     if (runContext) {
-      try {
-        await entryService.upsert({
-          run_id: runContext.runId,
-          item_id: Number(itemId),
-          column_id: runContext.columnId,
-          value: status === 'PASS' ? 'ok' : 'not_ok'
-        });
-      } catch (e) {
-        console.error('Save entry failed:', e);
-      }
+      const item = items.find(i => i.id === itemId);
+      debouncedSave(itemId, status, item?.note);
     }
   };
 
@@ -70,7 +136,12 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
     if (!runContext) return;
     setIsSubmitting(true);
     try {
-      await runService.update(runContext.runId, { status: 'completed' });
+      // Step 1: Mark as completed
+      await reviewService.completeWork(runContext.runId);
+      
+      // Step 2: Request review from supervisor
+      await reviewService.requestReview(runContext.runId);
+      
       onComplete({
         ...checklist,
         status: ChecklistStatus.COMPLETED,
@@ -79,6 +150,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
       });
     } catch (e) {
       console.error('Submit checklist failed:', e);
+      alert('Không gửi được báo cáo. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }
@@ -86,16 +158,15 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
   const handleVerifySubmit = async () => {
     if (!runContext) return;
+    
+    // Optional: Ask for review note
+    const reviewNote = prompt("📝 Ghi chú xác nhận (tùy chọn):");
+    
     setIsSubmitting(true);
     try {
-      if (runContext.sessionId) {
-        await signoffService.create({
-          run_id: runContext.runId,
-          session_id: runContext.sessionId,
-          role_id: runContext.roleId
-        });
-      }
-      await runService.update(runContext.runId, { status: 'reviewed' });
+      // Use review workflow approve
+      await reviewService.approve(runContext.runId, reviewNote || '');
+      
       onComplete({
         ...checklist,
         status: ChecklistStatus.REVIEWED,
@@ -103,6 +174,37 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
       });
     } catch (e) {
       console.error('Verify checklist failed:', e);
+      alert('Không phê duyệt được. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!runContext) return;
+    
+    const rejectReason = prompt("❌ Lý do từ chối (BẮT BUỘC):\n\nVí dụ: Cần sửa lại hạng mục #5");
+    
+    if (!rejectReason || rejectReason.trim().length < 5) {
+      alert("Vui lòng nhập lý do từ chối (ít nhất 5 ký tự)");
+      return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+      await reviewService.reject(runContext.runId, rejectReason);
+      
+      onComplete({
+        ...checklist,
+        status: ChecklistStatus.IN_PROGRESS, // Back to in progress for staff to fix
+        items: items
+      });
+      
+      alert(`✅ Đã từ chối và gửi yêu cầu sửa lại cho nhân viên.\n\nLý do: ${rejectReason}`);
+      onBack();
+    } catch (e) {
+      console.error('Reject checklist failed:', e);
+      alert('Không từ chối được. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }
@@ -152,6 +254,30 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
   const progress = calculateProgress();
   const allAnswered = items.every(i => i.status);
 
+  // Helper to format last saved time
+  const getLastSavedText = () => {
+    if (!lastSaved) return null;
+    const now = new Date();
+    const diffSecs = Math.floor((now.getTime() - lastSaved.getTime()) / 1000);
+    
+    if (diffSecs < 5) return 'Vừa lưu';
+    if (diffSecs < 60) return `Đã lưu ${diffSecs}s trước`;
+    const diffMins = Math.floor(diffSecs / 60);
+    return `Đã lưu ${diffMins} phút trước`;
+  };
+
+  // Show loading screen while fetching run details
+  if (isLoading) {
+    return (
+      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="w-12 h-12 text-brand-600 animate-spin mx-auto mb-4" />
+          <p className="text-sm text-gray-600 font-medium">Đang tải checklist...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gray-50 min-h-screen pb-28 flex flex-col">
       <div className="bg-white p-5 shadow-sm sticky top-0 z-20 rounded-b-3xl">
@@ -184,6 +310,25 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
             </div>
           )}
         </div>
+
+        {/* Auto-save Indicator */}
+        {runContext && (
+          <div className="mb-3 flex items-center justify-between text-[10px]">
+            <div className="flex items-center gap-1.5">
+              {isSaving ? (
+                <>
+                  <Loader className="w-3 h-3 text-blue-500 animate-spin" />
+                  <span className="text-blue-600 font-medium">Đang lưu...</span>
+                </>
+              ) : lastSaved ? (
+                <>
+                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                  <span className="text-gray-500">{getLastSavedText()}</span>
+                </>
+              ) : null}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between mb-2 px-1">
           <span className="text-[10px] font-bold text-gray-400">TIẾN ĐỘ THỰC HIỆN</span>
@@ -228,7 +373,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
                     <div className="flex items-center gap-2 text-[10px] font-bold">
                        <Check size={14} /> ĐÃ BÁO CÁO SỰ CỐ
                     </div>
-                    {item.note && <p className="text-[10px] italic px-2 text-center text-red-400">"{item.note}"</p>}
+                    {item.note && <p className="text-[10px] italic px-2 text-center text-red-400">&quot;{item.note}&quot;</p>}
                   </div>
                 ) : (
                   <>
@@ -336,15 +481,11 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
         {isVerifier && checklist.status === ChecklistStatus.COMPLETED && (
           <div className="flex gap-4">
             <button
-              onClick={() => {
-                if(window.confirm("Yêu cầu nhân viên thực hiện lại các hạng mục chưa đạt?")) {
-                  onComplete({...checklist, status: ChecklistStatus.IN_PROGRESS});
-                  onBack();
-                }
-              }}
+              onClick={handleRejectSubmit}
+              disabled={isSubmitting}
               className="flex-1 py-4.5 bg-white text-orange-600 rounded-2xl font-black text-xs border-2 border-orange-100 hover:bg-orange-50 active:scale-95 transition-all"
             >
-              YÊU CẦU SỬA
+              {isSubmitting ? 'ĐANG XỬ LÝ...' : 'TỪ CHỐI & YÊU CẦU SỬA'}
             </button>
             <button
               onClick={handleVerifySubmit}

@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from './api';
+import { apiGet, apiPost, apiPut, apiDelete } from './api';
 
 export interface RunDetail {
   run: {
@@ -12,7 +12,7 @@ export interface RunDetail {
     completed_at?: string;
     verified_at?: string;
   };
-  template: { id: number; name: string; area_id: number };
+  template: { id: number; name: string; area_id: number; columns?: Array<{ id: number; role_id?: number; role_name?: string; session_id?: number; time_hhmm?: string }> };
   sessions: Array<{ id: number; time_hhmm: string }>;
   roles: Array<{ id: number; name: string }>;
   columns: Array<{
@@ -44,6 +44,8 @@ export interface RunListParams {
   date?: string;
   area_id?: number;
   assigned_to?: number;
+  status?: string;
+  per_page?: number;
 }
 
 export const runService = {
@@ -52,6 +54,8 @@ export const runService = {
     if (params?.date) queryString.append('date', params.date);
     if (params?.area_id) queryString.append('area_id', params.area_id.toString());
     if (params?.assigned_to) queryString.append('assigned_to', params.assigned_to.toString());
+    if (params?.status) queryString.append('status', params.status);
+    if (params?.per_page) queryString.append('per_page', params.per_page.toString());
 
     const endpoint = queryString.toString() ? `/runs?${queryString}` : '/runs';
     return apiGet(endpoint);
@@ -69,5 +73,9 @@ export const runService = {
   async update(runId: number, data: { status?: string; assigned_to?: number; verified_by?: number }): Promise<RunDetail> {
     // Backend expects PUT for RunController@update
     return apiPut<RunDetail>(`/runs/${runId}`, data);
+  },
+
+  async delete(runId: number): Promise<void> {
+    await apiDelete<void>(`/runs/${runId}`);
   }
 };

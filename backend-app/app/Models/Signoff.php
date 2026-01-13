@@ -16,10 +16,14 @@ class Signoff extends Model
         'user_id',
         'note',
         'signed_at',
+        'review_status',
+        'review_note',
+        'reviewed_at',
     ];
 
     protected $casts = [
         'signed_at' => 'datetime',
+        'reviewed_at' => 'datetime',
     ];
 
     public function run(): BelongsTo

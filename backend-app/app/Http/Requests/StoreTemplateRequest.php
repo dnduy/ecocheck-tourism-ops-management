@@ -13,16 +13,19 @@ class StoreTemplateRequest extends FormRequest
 
     public function rules(): array
     {
+            // For updates (PUT), make groups fields optional
+            $isUpdate = $this->isMethod('PUT');
+            
             return [
                 'name' => ['required', 'string', 'max:255'],
                 'description' => ['nullable', 'string'],
                 'groups' => ['nullable', 'array'],
-                'groups.*.title' => ['required', 'string', 'max:255'],
-                'groups.*.items' => ['required', 'array'],
-                'groups.*.items.*.title' => ['required', 'string', 'max:255'],
+                'groups.*.title' => [$isUpdate ? 'nullable' : 'required', 'string', 'max:255'],
+                'groups.*.items' => [$isUpdate ? 'nullable' : 'required', 'array'],
+                'groups.*.items.*.title' => [$isUpdate ? 'nullable' : 'required', 'string', 'max:255'],
                 'groups.*.items.*.instructions' => ['nullable', 'string'],
                 'columns' => ['nullable', 'array'],
-                'columns.*.label' => ['required', 'string', 'max:255'],
+                'columns.*.label' => [$isUpdate ? 'nullable' : 'required', 'string', 'max:255'],
                 'columns.*.type' => ['nullable', 'string', 'max:50'],
                 'columns.*.options' => ['nullable', 'array'],
             ];

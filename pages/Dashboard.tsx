@@ -2,14 +2,15 @@
 import React, { useEffect, useState } from 'react';
 import { User, Checklist, Incident, Role, ChecklistStatus, IncidentStatus, IncidentPriority } from '../types';
 import { 
-  CheckCircle2, Clock, AlertOctagon, ArrowRight, ClipboardList, 
+  CheckCircle2, ArrowRight, ClipboardList, 
   LogOut, TrendingUp, Wrench, ShieldAlert, Zap, Calendar, UserCheck, QrCode
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip as RechartsTooltip } from 'recharts';
+import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { dashboardService, type DashboardStats, type WeeklyStats } from '../services/dashboardService';
 
 interface DashboardProps {
   user: User;
+  users: User[];
   checklists: Checklist[];
   incidents: Incident[];
   onChangeTab: (tab: string) => void;
@@ -17,13 +18,50 @@ interface DashboardProps {
   onOpenScanner: () => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, checklists, incidents, onChangeTab, onLogout, onOpenScanner }) => {
+export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, users, checklists, incidents, onChangeTab, onLogout, onOpenScanner }) => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [weekly, setWeekly] = useState<WeeklyStats[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  const getRelativeTime = (date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    
+    if (diffSecs < 10) return 'vừa xong';
+    if (diffSecs < 60) return `${diffSecs} giây trước`;
+    
+    const diffMins = Math.floor(diffSecs / 60);
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} giờ trước`;
+    
+    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const loadStats = async () => {
+    setIsLoading(true);
+    try {
+      const [s, w] = await Promise.all([
+        dashboardService.getStats(),
+        dashboardService.getWeeklyStats()
+      ]);
+      setStats(s);
+      setWeekly(w);
+      setLastUpdate(new Date());
+    } catch (e) {
+      console.error('Load dashboard stats failed:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
+    let intervalId: NodeJS.Timeout | null = null;
+
     const load = async () => {
       try {
         const [s, w] = await Promise.all([
@@ -33,22 +71,48 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, checklist
         if (mounted) {
           setStats(s);
           setWeekly(w);
+          setLastUpdate(new Date());
+          setIsLoading(false);
         }
       } catch (e) {
         console.error('Load dashboard stats failed:', e);
-      } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
     };
+
+    // Initial load
     load();
+
+    // Auto-refresh every 30 seconds
+    intervalId = setInterval(() => {
+      if (mounted) {
+        load();
+      }
+    }, 30000);
+
     return () => {
       mounted = false;
+      if (intervalId) clearInterval(intervalId);
     };
   }, []);
   // Common stats
   const pendingIncidents = incidents.filter(i => i.status !== IncidentStatus.RESOLVED);
-  const myChecklists = checklists.filter(c => c.assignedTo === user.id);
+  const myChecklists = checklists.filter(c => String(c.assignedTo) === String(user.id));
   const myPendingChecklists = myChecklists.filter(c => c.status !== ChecklistStatus.COMPLETED);
+
+  // Per-user stats (for supervisor/manager views)
+  const staffUsers = users.filter(u => u.role === Role.STAFF);
+  const userStats = staffUsers.map(su => {
+    const mine = checklists.filter(c => String(c.assignedTo) === String(su.id));
+    const completed = mine.filter(c => c.status === ChecklistStatus.REVIEWED || c.status === ChecklistStatus.COMPLETED).length;
+    const inProgress = mine.filter(c => c.status === ChecklistStatus.IN_PROGRESS).length;
+    const pending = mine.filter(c => c.status === ChecklistStatus.PENDING).length;
+    const total = mine.length;
+    const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { user: su, total, completed, inProgress, pending, rate };
+  }).sort((a, b) => b.rate - a.rate);
   
   // Dashboard Header with Logout
   const Header = () => (
@@ -65,13 +129,30 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, checklist
           </div>
         </div>
       </div>
-      <button 
-        onClick={onLogout}
-        className="p-2.5 bg-gray-50 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all active:scale-95"
-        title="Đăng xuất"
-      >
-        <LogOut size={20} />
-      </button>
+      <div className="flex items-center gap-2">
+        <button 
+          onClick={loadStats}
+          disabled={isLoading}
+          className="p-2.5 bg-gray-50 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all active:scale-95 disabled:opacity-50"
+          title="Làm mới"
+        >
+          <svg 
+            className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+        <button 
+          onClick={onLogout}
+          className="p-2.5 bg-gray-50 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all active:scale-95"
+          title="Đăng xuất"
+        >
+          <LogOut size={20} />
+        </button>
+      </div>
     </div>
   );
 
@@ -79,25 +160,48 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, checklist
   const ManagerDashboard = () => {
     const chartData = (weekly && weekly.length > 0)
       ? weekly.map(d => ({ name: d.day, val: d.completed }))
-      : [
-          { name: 'T.Hai', val: 45 }, { name: 'T.Ba', val: 52 }, { name: 'T.Tư', val: 48 }, 
-          { name: 'T.Năm', val: 61 }, { name: 'T.Sáu', val: 55 }, { name: 'T.Bảy', val: 67 }
-        ];
+      : [];
     
     return (
       <div className="space-y-5">
+        {/* Loading Overlay */}
+        {isLoading && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 flex items-center gap-2 text-xs text-blue-700">
+            <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            Đang tải dữ liệu...
+          </div>
+        )}
+
+        {/* Last Update Indicator */}
+        {lastUpdate && !isLoading && (
+          <div className="flex items-center justify-end gap-2 text-[10px] text-gray-400">
+            <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
+            Cập nhật: {getRelativeTime(lastUpdate)}
+          </div>
+        )}
+
         <div className="bg-brand-900 text-white p-6 rounded-3xl shadow-xl relative overflow-hidden">
           <div className="relative z-10">
             <p className="text-brand-200 text-xs font-medium uppercase tracking-widest mb-1">Hiệu suất vận hành</p>
-            <h2 className="text-3xl font-bold mb-4">{stats ? `${stats.completion_rate}%` : '—'}</h2>
+            <h2 className="text-3xl font-bold mb-4">
+              {isLoading ? (
+                <span className="text-2xl">—</span>
+              ) : (
+                `${stats?.completion_rate || 0}%`
+              )}
+            </h2>
             <div className="flex gap-4">
               <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl flex-1">
                 <p className="text-[10px] text-brand-200 mb-1">Checklists</p>
-                <p className="text-sm font-bold">{stats ? `${stats.completed_runs}/${stats.total_runs}` : '—'}</p>
+                <p className="text-sm font-bold">
+                  {isLoading ? '—' : `${stats?.completed_runs || 0}/${stats?.total_runs || 0}`}
+                </p>
               </div>
               <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl flex-1">
                 <p className="text-[10px] text-brand-200 mb-1">Sự cố mới</p>
-                <p className="text-sm font-bold text-orange-400">+{stats ? stats.open_incidents : incidents.length}</p>
+                <p className="text-sm font-bold text-orange-400">
+                  +{isLoading ? '—' : (stats?.open_incidents || 0)}
+                </p>
               </div>
             </div>
           </div>
@@ -106,18 +210,31 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, checklist
 
         <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
           <h3 className="text-sm font-bold text-gray-800 mb-4">Hoàn thành theo ngày</h3>
-          <div className="h-40 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <Bar dataKey="val" radius={[4, 4, 0, 0]}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={index === chartData.length - 1 ? '#0ea5e9' : '#e0f2fe'} />
-                  ))}
-                </Bar>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {isLoading ? (
+            <div className="h-64 flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                <p className="text-xs text-gray-400">Đang tải biểu đồ...</p>
+              </div>
+            </div>
+          ) : chartData.length > 0 ? (
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height={256} minWidth={0}>
+                <BarChart data={chartData}>
+                  <Bar dataKey="val" radius={[4, 4, 0, 0]}>
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={index === chartData.length - 1 ? '#0ea5e9' : '#e0f2fe'} />
+                    ))}
+                  </Bar>
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-gray-400 text-sm">
+              Chưa có dữ liệu
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -139,17 +256,30 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, checklist
   };
 
   // 2. STAFF DASHBOARD
-  const StaffDashboard = () => (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-3xl border border-brand-100 shadow-sm relative overflow-hidden">
-        <div className="relative z-10">
-          <h2 className="text-xl font-bold text-gray-900 mb-1">Công việc của bạn</h2>
-          <p className="text-sm text-gray-500 mb-4">Bạn có {myPendingChecklists.length} việc cần hoàn thành hôm nay.</p>
-          <div className="flex items-center justify-between bg-brand-50 p-4 rounded-2xl border border-brand-100">
-            <div>
-              <p className="text-[10px] font-bold text-brand-600 uppercase">Tiến độ ca trực</p>
-              <p className="text-lg font-black text-brand-900">{myChecklists.length > 0 ? Math.round(((myChecklists.length - myPendingChecklists.length) / myChecklists.length) * 100) : 0}%</p>
-            </div>
+  const StaffDashboard = () => {
+    const myCompletionRate = myChecklists.length > 0 
+      ? Math.round(((myChecklists.length - myPendingChecklists.length) / myChecklists.length) * 100) 
+      : 0;
+
+    return (
+      <div className="space-y-6">
+        {/* Loading Indicator */}
+        {isLoading && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 flex items-center gap-2 text-xs text-blue-700">
+            <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            Đang tải dữ liệu...
+          </div>
+        )}
+
+        <div className="bg-white p-6 rounded-3xl border border-brand-100 shadow-sm relative overflow-hidden">
+          <div className="relative z-10">
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Công việc của bạn</h2>
+            <p className="text-sm text-gray-500 mb-4">Bạn có {myPendingChecklists.length} việc cần hoàn thành hôm nay.</p>
+            <div className="flex items-center justify-between bg-brand-50 p-4 rounded-2xl border border-brand-100">
+              <div>
+                <p className="text-[10px] font-bold text-brand-600 uppercase">Tiến độ ca trực</p>
+                <p className="text-lg font-black text-brand-900">{myCompletionRate}%</p>
+              </div>
             <button 
               onClick={() => onChangeTab('checklists')}
               className="bg-brand-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-brand-200"
@@ -163,21 +293,29 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, checklist
 
       <div className="space-y-3">
         <h3 className="text-sm font-bold text-gray-800 ml-1">Lịch trình sắp tới</h3>
-        {myPendingChecklists.slice(0, 3).map(cl => (
-          <div key={cl.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-            <div className="w-10 h-10 bg-orange-50 text-orange-500 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Calendar size={20} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-bold text-gray-900 truncate">{cl.templateName}</h4>
-              <p className="text-[10px] text-gray-500">{cl.area.name} • {cl.shift}</p>
-            </div>
-            <ArrowRight size={16} className="text-gray-300" />
+        {myPendingChecklists.length === 0 ? (
+          <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 text-center">
+            <CheckCircle2 size={48} className="mx-auto text-green-100 mb-2" />
+            <p className="text-sm text-gray-500 font-medium">Bạn đã hoàn thành tất cả công việc!</p>
           </div>
-        ))}
+        ) : (
+          myPendingChecklists.slice(0, 3).map(cl => (
+            <div key={cl.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
+              <div className="w-10 h-10 bg-orange-50 text-orange-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Calendar size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-bold text-gray-900 truncate">{cl.templateName}</h4>
+                <p className="text-[10px] text-gray-500">{cl.area.name} • {cl.shift}</p>
+              </div>
+              <ArrowRight size={16} className="text-gray-300" />
+            </div>
+          ))
+        )}
       </div>
     </div>
-  );
+    );
+  };
 
   // 3. MAINTENANCE DASHBOARD
   const MaintenanceDashboard = () => (
@@ -229,22 +367,77 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, checklist
   );
 
   // 4. SUPERVISOR DASHBOARD
-  const SupervisorDashboard = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm text-center">
-          <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
-            <ClipboardList size={22} />
+  const SupervisorDashboard = () => {
+    const pendingCount = checklists.filter(c => c.status === ChecklistStatus.PENDING).length;
+    const completedToday = checklists.filter(c => c.status === ChecklistStatus.COMPLETED || c.status === ChecklistStatus.REVIEWED).length;
+    
+    return (
+      <div className="space-y-6">
+        {/* Loading Indicator */}
+        {isLoading && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 flex items-center gap-2 text-xs text-blue-700">
+            <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            Đang tải dữ liệu...
           </div>
-          <p className="text-2xl font-black text-gray-900">{checklists.filter(c => c.status === ChecklistStatus.PENDING).length}</p>
-          <p className="text-[10px] text-gray-500 font-bold uppercase">Chờ phân công</p>
+        )}
+
+        {/* Stats from API */}
+        {!isLoading && stats && (
+          <div className="bg-gradient-to-br from-brand-600 to-brand-700 text-white p-5 rounded-3xl shadow-xl">
+            <p className="text-brand-100 text-xs font-bold uppercase mb-1">Hiệu suất hệ thống</p>
+            <div className="flex items-center gap-4">
+              <div className="text-3xl font-black">{stats.completion_rate}%</div>
+              <div className="flex-1 text-xs">
+                <div className="flex justify-between mb-1">
+                  <span className="text-brand-100">Hoàn thành</span>
+                  <span className="font-bold">{stats.completed_runs}/{stats.total_runs}</span>
+                </div>
+                <div className="w-full bg-white/20 rounded-full h-2">
+                  <div 
+                    className="bg-white h-2 rounded-full transition-all" 
+                    style={{ width: `${stats.completion_rate}%` }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm text-center">
+            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+              <ClipboardList size={22} />
+            </div>
+            <p className="text-2xl font-black text-gray-900">{pendingCount}</p>
+            <p className="text-[10px] text-gray-500 font-bold uppercase">Chờ phân công</p>
+          </div>
+          <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm text-center">
+            <div className="w-10 h-10 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+              <CheckCircle2 size={22} />
+            </div>
+          <p className="text-2xl font-black text-gray-900">{completedToday}</p>
+          <p className="text-[10px] text-gray-500 font-bold uppercase">Hoàn thành hôm nay</p>
         </div>
-        <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm text-center">
-          <div className="w-10 h-10 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
-            <CheckCircle2 size={22} />
-          </div>
-          <p className="text-2xl font-black text-gray-900">{checklists.filter(c => c.status === ChecklistStatus.COMPLETED).length}</p>
-          <p className="text-[10px] text-gray-500 font-bold uppercase">Chờ phê duyệt</p>
+      </div>
+
+      <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
+        <h3 className="text-sm font-bold text-gray-800 mb-4">Thống kê theo nhân sự</h3>
+        <div className="space-y-3">
+          {userStats.slice(0, 6).map(stat => (
+            <div key={stat.user.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100">
+              <div className="flex items-center gap-2">
+                <img src={stat.user.avatar} className="w-8 h-8 rounded-full border-2 border-white" />
+                <div>
+                  <p className="text-xs font-bold text-gray-900">{stat.user.name}</p>
+                  <p className="text-[10px] text-gray-500">Hoàn thành: {stat.completed}/{stat.total}</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-brand-50 text-brand-700">{stat.rate}%</span>
+            </div>
+          ))}
+          {userStats.length === 0 && (
+            <p className="text-xs text-gray-400">Chưa có dữ liệu nhiệm vụ cho nhân sự.</p>
+          )}
         </div>
       </div>
 
@@ -276,7 +469,8 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, checklist
         <UserCheck size={20} /> Kiểm tra tiến độ khu vực
       </button>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="p-4 pb-24 space-y-4 min-h-full relative">
