@@ -15,7 +15,6 @@
     "recharts": "^3.5.1",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "@google/genai": "^1.33.0",
     "lucide-react": "^0.561.0",
     "html5-qrcode": "2.3.8",
     "xlsx": "0.18.5"

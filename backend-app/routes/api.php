@@ -1,71 +1,56 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\AreaController;
-use App\Http\Controllers\Api\TemplateController;
-use App\Http\Controllers\Api\RunController;
-use App\Http\Controllers\Api\EntryController;
-use App\Http\Controllers\Api\SignoffController;
-use App\Http\Controllers\Api\IncidentController;
-use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\ReviewController;
-use App\Http\Controllers\Api\StatsController;
+use App\Domains\User\Http\Controllers\AuthController;
+use App\Domains\User\Http\Controllers\UserController;
+use App\Domains\Checklist\Http\Controllers\AreaController;
+use App\Domains\Checklist\Http\Controllers\TemplateController;
+use App\Domains\Checklist\Http\Controllers\TemplatesController;
+use App\Domains\Checklist\Http\Controllers\ChecklistRunController;
+use App\Domains\Checklist\Http\Controllers\CellController;
+use App\Domains\Checklist\Http\Controllers\SignoffController;
+use App\Domains\Incident\Http\Controllers\IncidentController;
 
-Route::prefix('auth')->group(function () {
-    Route::post('login', [AuthController::class, 'login']);
-    Route::middleware('auth:sanctum')->group(function () {
-        Route::get('me', [AuthController::class, 'me']);
-        Route::post('logout', [AuthController::class, 'logout']);
-    });
-});
+// Auth routes
+Route::post('/auth/login', [AuthController::class, 'login']);
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::apiResource('areas', AreaController::class)->except(['show']);
-    Route::apiResource('users', UserController::class)->except(['show']);
-    Route::get('templates', [TemplateController::class, 'index']);
-    Route::get('templates/{template}', [TemplateController::class, 'show']);
-    Route::post('templates', [TemplateController::class, 'store']);
-    Route::put('templates/{template}', [TemplateController::class, 'update']);
-    Route::delete('templates/{template}', [TemplateController::class, 'destroy']);
+    // Auth
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::get('/me', [AuthController::class, 'me']);
 
-    Route::get('runs', [RunController::class, 'index']);
-    Route::post('runs', [RunController::class, 'store']);
-    Route::get('runs/{run}', [RunController::class, 'show']);
-    Route::put('runs/{run}', [RunController::class, 'update']);
-    Route::delete('runs/{run}', [RunController::class, 'destroy']);
+    // Users
+    Route::get('/users', [UserController::class, 'index']);
+    Route::get('/users/{id}', [UserController::class, 'show']);
 
-    Route::put('entries', [EntryController::class, 'upsert']);
+    // Templates
+    Route::get('/templates', [TemplatesController::class, 'index']);
+    Route::get('/templates/{id}', [TemplatesController::class, 'show']);
 
-    Route::post('signoffs', [SignoffController::class, 'store']);
+    // Areas (manager only)
+    Route::get('/areas', [AreaController::class, 'index']);
+    Route::post('/areas', [AreaController::class, 'store']);
+    Route::patch('/areas/{id}', [AreaController::class, 'update']);
+    Route::delete('/areas/{id}', [AreaController::class, 'destroy']);
 
-    // Review workflow routes
-    Route::prefix('review')->group(function () {
-        Route::get('pending', [ReviewController::class, 'getPendingReviews']);
-        Route::get('stats', [ReviewController::class, 'getStatusStats']);
-        Route::post('runs/{run}/start', [ReviewController::class, 'startWork']);
-        Route::post('runs/{run}/complete', [ReviewController::class, 'completeWork']);
-        Route::post('runs/{run}/request-review', [ReviewController::class, 'requestReview']);
-        Route::post('runs/{run}/approve', [ReviewController::class, 'approve']);
-        Route::post('runs/{run}/reject', [ReviewController::class, 'reject']);
-        Route::post('runs/{run}/resubmit', [ReviewController::class, 'resubmit']);
-        Route::get('runs/{run}', [ReviewController::class, 'showForReview']);
-    });
+    // Templates (manager only)
+    Route::get('/areas/{areaId}/template', [TemplateController::class, 'getAreaTemplate']);
+    Route::post('/templates/import', [TemplateController::class, 'import']);
 
-    Route::apiResource('incidents', IncidentController::class)->except(['show']);
-    Route::get('incidents/{incident}', [IncidentController::class, 'show']);
+    // Checklist Runs
+    Route::post('/runs', [ChecklistRunController::class, 'store']);
+    Route::get('/runs', [ChecklistRunController::class, 'index']);
+    Route::get('/runs/{id}', [ChecklistRunController::class, 'show']);
+    Route::patch('/runs/{id}', [ChecklistRunController::class, 'update']);
 
-    // Admin stats
-    Route::prefix('admin')->group(function () {
-        Route::get('staff-stats', [StatsController::class, 'staffStats']);
-        Route::get('supervisor-stats', [StatsController::class, 'supervisorStats']);
-        Route::get('staff/{staffId}/detail', [StatsController::class, 'staffDetail']);
-    });
-});
+    // Cells (entries)
+    Route::put('/cells', [CellController::class, 'upsert']);
 
-// Checklists management
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('checklists/create-daily', [\App\Http\Controllers\ChecklistController::class, 'createDaily']);
-    Route::get('checklists/date/{date}', [\App\Http\Controllers\ChecklistController::class, 'getByDate']);
-    Route::delete('checklists/date/{date}', [\App\Http\Controllers\ChecklistController::class, 'deleteByDate']);
+    // Signoffs
+    Route::put('/signoffs', [SignoffController::class, 'upsert']);
+
+    // Incidents
+    Route::get('/incidents', [IncidentController::class, 'index']);
+    Route::post('/incidents', [IncidentController::class, 'store']);
+    Route::patch('/incidents/{id}', [IncidentController::class, 'update']);
 });

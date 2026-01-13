@@ -1,8 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { Incident, IncidentStatus, IncidentPriority, User, Area } from '../types';
-import { Bot, ChevronDown, ChevronRight, CheckCircle, Hammer, Plus, X, AlertTriangle, User as UserIcon, Wrench, Zap, Droplets, Truck, Armchair, Flower2 } from 'lucide-react';
-import { analyzeIncident } from '../services/geminiService';
+import { ChevronDown, ChevronRight, CheckCircle, Hammer, Plus, X, AlertTriangle, User as UserIcon, Wrench, Zap, Droplets, Truck, Armchair, Flower2 } from 'lucide-react';
 import { sanitizeInput } from '../services/validation';
 
 interface IncidentsProps {
@@ -18,8 +17,6 @@ interface IncidentsProps {
 export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, users = [], areas = [], onUpdateStatus, onCreateIncident, onAssignIncident }) => {
   const [selectedIncident, setSelectedIncident] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiAdvice, setAiAdvice] = useState<Record<string, string>>({});
   const [detailIncident, setDetailIncident] = useState<Incident | null>(null);
   const [resolutionNote, setResolutionNote] = useState('');
   const [assignedUserId, setAssignedUserId] = useState<number | null>(null);
@@ -54,7 +51,7 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, us
 
   const getCategoryIcon = (cat: string) => {
     switch (cat) {
-      case 'Điện lạnh (HVAC)': return <Bot size={18} className="text-blue-500" />;
+      case 'Điện lạnh (HVAC)': return <Wrench size={18} className="text-blue-500" />;
       case 'Cấp thoát nước': return <Droplets size={18} className="text-cyan-500" />;
       case 'Điện dân dụng': return <Zap size={18} className="text-yellow-500" />;
       case 'Phương tiện': return <Truck size={18} className="text-orange-500" />;
@@ -138,16 +135,6 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, us
       description: cleanDescription
     });
     setShowCreateModal(false);
-  };
-
-  const handleAiAnalyze = async (incident: Incident) => {
-    if (aiAdvice[incident.id]) return; // Already analyzed
-    
-    setAiLoading(true);
-    const areaName = typeof incident.area === 'string' ? incident.area : incident.area.name;
-    const advice = await analyzeIncident(incident.title, incident.description, areaName);
-    setAiAdvice(prev => ({ ...prev, [incident.id]: advice }));
-    setAiLoading(false);
   };
 
   const getPriorityColor = (p: IncidentPriority) => {
@@ -289,7 +276,6 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, us
                   <div className="space-y-3 pl-2 animate-in slide-in-from-top-2 duration-200">
                     {items.map((incident) => {
                       const isExpanded = selectedIncident === incident.id;
-                      const advice = aiAdvice[incident.id];
 
                       return (
                         <div key={incident.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden ml-2 relative">
@@ -358,36 +344,6 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, us
                                   Xem chi tiết
                                 </button>
                               </div>
-
-                              {/* AI Section */}
-                              <div className="bg-white rounded-lg p-3 border border-purple-100 shadow-sm">
-                                <div className="flex justify-between items-center mb-2">
-                                  <h4 className="text-xs font-bold text-purple-800 flex items-center">
-                                    <Bot size={14} className="mr-1.5" />
-                                    Trợ lý Kỹ thuật AI
-                                  </h4>
-                                  {!advice && (
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); handleAiAnalyze(incident); }}
-                                      disabled={aiLoading}
-                                      className="text-[10px] bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 disabled:opacity-50 font-bold"
-                                    >
-                                      {aiLoading ? 'Đang phân tích...' : 'Gợi ý xử lý'}
-                                    </button>
-                                  )}
-                                </div>
-                                
-                                {advice ? (
-                                   <div className="text-xs text-gray-600 whitespace-pre-line leading-relaxed bg-purple-50 p-2 rounded">
-                                     {advice}
-                                   </div>
-                                ) : (
-                                  <p className="text-[10px] text-gray-400 italic">
-                                    Nhấn nút để AI phân tích nguyên nhân và đề xuất giải pháp.
-                                  </p>
-                                )}
-                              </div>
-
                             </div>
                           )}
                         </div>
