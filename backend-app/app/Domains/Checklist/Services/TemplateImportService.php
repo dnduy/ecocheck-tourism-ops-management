@@ -135,6 +135,36 @@ class TemplateImportService
                 ]);
                 $stats['items_imported']++;
             }
+        } elseif (isset($dept['columns']) && is_array($dept['columns'])) {
+            // Some checklists (e.g., hourly WC checks) encode check-items as columns.
+            // Derive items from columns by excluding time/signature columns.
+            $rawColumns = array_values(array_filter($dept['columns'], fn ($c) => is_string($c) && trim($c) !== ''));
+
+            $derivedItems = [];
+            foreach ($rawColumns as $col) {
+                $normalized = trim($col);
+                if ($normalized === 'Thời gian') {
+                    continue;
+                }
+                if (stripos($normalized, 'NV') !== false) {
+                    continue;
+                }
+                if (stripos($normalized, 'Giám sát') !== false) {
+                    continue;
+                }
+                $derivedItems[] = $normalized;
+            }
+
+            $derivedItems = array_values(array_unique($derivedItems));
+            foreach ($derivedItems as $itemIndex => $itemContent) {
+                TemplateItem::create([
+                    'template_id' => $template->id,
+                    'group_id' => null,
+                    'content' => $itemContent,
+                    'sort_order' => $itemIndex,
+                ]);
+                $stats['items_imported']++;
+            }
         }
 
         // Create columns (session x role combinations)
