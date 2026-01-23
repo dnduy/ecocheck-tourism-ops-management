@@ -38,6 +38,16 @@ class User extends Authenticatable
         return $this->belongsToMany(Area::class)->withTimestamps();
     }
 
+    public function assignedRuns()
+    {
+        return $this->hasMany(\App\Domains\Checklist\Models\ChecklistRun::class, 'assigned_to');
+    }
+
+    public function signoffs()
+    {
+        return $this->hasMany(\App\Domains\Checklist\Models\RunSignoff::class, 'signed_by');
+    }
+
     public function isManager(): bool
     {
         return $this->role === 'manager';

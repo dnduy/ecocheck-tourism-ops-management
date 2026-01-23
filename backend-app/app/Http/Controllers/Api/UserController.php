@@ -10,54 +10,43 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+
 class UserController extends Controller
 {
+    use \App\Traits\ApiResponse;
+
+    protected $userService;
+
+    public function __construct(\App\Interfaces\UserServiceInterface $userService)
+    {
+        $this->userService = $userService;
+    }
+
     public function index(): JsonResponse
     {
-        $users = User::select('id', 'name', 'email', 'role', 'avatar')
-            ->latest()
-            ->get();
-
-        return response()->json($users);
+        $users = $this->userService->getAllUsers();
+        return $this->successResponse($users, 'Lấy danh sách người dùng thành công');
     }
 
     public function store(StoreUserRequest $request): JsonResponse
     {
-        $data = $request->validated();
-        $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => Hash::make($data['password']),
-            'role' => $data['role'],
-            'avatar' => $data['avatar'] ?? 'https://ui-avatars.com/api/?name=' . urlencode($data['name']) . '&background=random&color=fff',
-        ]);
-
-        return response()->json($user, 201);
+        $user = $this->userService->createUser($request->validated());
+        return $this->successResponse($user, 'Tạo người dùng thành công', 201);
     }
 
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
-        $data = $request->validated();
-
-        if (isset($data['password']) && $data['password']) {
-            $data['password'] = Hash::make($data['password']);
-        } else {
-            unset($data['password']);
-        }
-
-        $user->update($data);
-
-        return response()->json($user);
+        $user = $this->userService->updateUser($user, $request->validated());
+        return $this->successResponse($user, 'Cập nhật người dùng thành công');
     }
 
     public function destroy(Request $request, User $user): JsonResponse
     {
-        if ($request->user()->id === $user->id) {
-            return response()->json(['message' => 'Không thể tự xóa chính bạn'], 422);
+        try {
+            $this->userService->deleteUser($user, $request->user());
+            return $this->successResponse(null, 'Đã xóa người dùng');
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
-
-        $user->delete();
-
-        return response()->json(['message' => 'Đã xóa người dùng']);
     }
 }

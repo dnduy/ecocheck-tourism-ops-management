@@ -127,4 +127,20 @@ class ChecklistService
             ]
         );
     }
+
+    public function deleteRun(int $runId): bool
+    {
+        $run = ChecklistRun::find($runId);
+        
+        if (!$run) {
+            return false;
+        }
+        
+        // Delete related entries and signoffs (cascade)
+        $run->entries()->delete();
+        $run->signoffs()->delete();
+        $run->delete();
+        
+        return true;
+    }
 }

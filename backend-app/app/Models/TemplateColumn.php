@@ -11,11 +11,12 @@ class TemplateColumn extends Model
 {
     use HasFactory;
 
+    protected $table = 'template_columns';
+
     protected $fillable = [
-        'checklist_template_id',
-        'label',
-        'type',
-        'options',
+        'template_id',
+        'session_id',
+        'role_id',
         'sort_order',
     ];
 
@@ -25,7 +26,7 @@ class TemplateColumn extends Model
 
     public function template(): BelongsTo
     {
-        return $this->belongsTo(ChecklistTemplate::class, 'checklist_template_id');
+        return $this->belongsTo(ChecklistTemplate::class, 'template_id');
     }
 
     public function entries(): HasMany

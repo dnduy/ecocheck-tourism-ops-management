@@ -5,7 +5,7 @@ import { templateService } from '../services/templateService';
 import { runService } from '../services/runService';
 import { AdminStaffStats } from '../components/AdminStaffStats';
 import { AdminSupervisorStats } from '../components/AdminSupervisorStats';
-import { Plus, X, Users, ClipboardList, UserCheck, AlertCircle, Lock, Trash2, Eye, EyeOff, Edit, Edit2, PlusCircle, MinusCircle, ShieldCheck, KeyRound, MapPin, QrCode, Copy, Clock, Layers, TrendingUp, BarChart3 } from 'lucide-react';
+import { Plus, X, Users, ClipboardList, UserCheck, AlertCircle, Lock, Trash2, Eye, EyeOff, Edit, Edit2, PlusCircle, MinusCircle, ShieldCheck, KeyRound, MapPin, QrCode, Clock, Layers, TrendingUp, BarChart3, FileSpreadsheet } from 'lucide-react';
 
 interface AdminProps {
   currentUser: User;
@@ -17,23 +17,23 @@ interface AdminProps {
   onAddUser: (name: string, email: string, role: Role, password?: string) => void;
   onUpdateUser: (userId: string, updates: Partial<User>) => void;
   onDeleteUser: (userId: string) => void;
-  onAddChecklist: (templateName: string, areaId: string, shift: string, items: {text: string, isCritical: boolean}[], assignedTo?: string, verifiedBy?: string) => void;
+  onAddChecklist: (templateName: string, areaId: string, shift: string, items: { text: string, isCritical: boolean }[], assignedTo?: string, verifiedBy?: string) => void;
   onAssignChecklist?: (checklistId: string, updates: { assignedTo?: string, verifiedBy?: string }) => void;
   onAddArea?: (name: string, type: string) => void;
   onUpdateArea?: (id: string, name: string, type: string) => void;
   onDeleteArea?: (id: string) => void;
   onAddShift?: (name: string, startTime: string, endTime: string, type: any, applicableAreaIds: string[]) => void;
   onDeleteShift?: (id: string) => void;
-  onCloneDaily?: () => void; 
-  onCreateTemplate?: (data: { name: string; description?: string; groupTitle: string; itemTitles: string[]; columnLabel: string }) => void;
+  onCloneDaily?: () => void;
+  onCreateTemplate?: (data: { areaId: string; name: string; description?: string; groupTitle: string; itemTitles: string[]; columnLabel: string }) => void;
   onRunsChanged?: () => void;
   onTemplatesChanged?: () => void;
 }
 
-export const Admin: React.FC<AdminProps> = ({ 
+export const Admin: React.FC<AdminProps> = ({
   currentUser,
   users, checklists = [], areas = [], templates = [], shifts = [],
-  onAddUser, onUpdateUser, onDeleteUser, 
+  onAddUser, onUpdateUser, onDeleteUser,
   onAddChecklist, onAssignChecklist,
   onAddArea, onUpdateArea, onDeleteArea,
   onAddShift, onDeleteShift,
@@ -69,7 +69,7 @@ export const Admin: React.FC<AdminProps> = ({
 
   const availableTabs = getAvailableTabs();
   const [activeTab, setActiveTab] = useState<string>(availableTabs.length > 0 ? availableTabs[0].id : '');
-  
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (availableTabs.length > 0 && !availableTabs.find(t => t.id === activeTab)) {
@@ -91,12 +91,12 @@ export const Admin: React.FC<AdminProps> = ({
 
   // Template Modal State
   const [showTemplateModal, setShowTemplateModal] = useState(false);
-  const [templateForm, setTemplateForm] = useState({ name: '', description: '', groupTitle: 'Khu vực', columnLabel: 'Ca A', itemTitles: [''] });
+  const [templateForm, setTemplateForm] = useState({ areaId: '', name: '', description: '', groupTitle: 'Khu vực', columnLabel: 'Ca A', itemTitles: [''] });
 
   // Shift Modal State
   const [showShiftModal, setShowShiftModal] = useState(false);
-  const [shiftData, setShiftData] = useState<{name: string, startTime: string, endTime: string, type: any, applicableAreaIds: string[]}>({ 
-    name: '', startTime: '08:00', endTime: '16:00', type: 'NORMAL', applicableAreaIds: [] 
+  const [shiftData, setShiftData] = useState<{ name: string, startTime: string, endTime: string, type: any, applicableAreaIds: string[] }>({
+    name: '', startTime: '08:00', endTime: '16:00', type: 'NORMAL', applicableAreaIds: []
   });
 
   // Checklist Modal State
@@ -141,6 +141,28 @@ export const Admin: React.FC<AdminProps> = ({
   // Loading States
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Import State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importName, setImportName] = useState('');
+
+  const handleImportTemplate = async () => {
+    if (!importFile) return;
+    setIsSubmitting(true);
+    try {
+      await templateService.import(importFile, importName);
+      alert('✅ Import thành công!');
+      setShowImportModal(false);
+      setImportFile(null);
+      setImportName('');
+      if (onTemplatesChanged) onTemplatesChanged();
+    } catch (e) {
+      alert('❌ Lỗi: ' + (e as Error).message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Handlers
   const handleOpenUserModal = (u?: User) => {
     if (u) {
@@ -158,7 +180,7 @@ export const Admin: React.FC<AdminProps> = ({
       alert("Vui lòng nhập tên và email");
       return;
     }
-    
+
     setIsSubmitting(true);
     try {
       if (editingUserId) {
@@ -209,6 +231,10 @@ export const Admin: React.FC<AdminProps> = ({
   };
 
   const handleSubmitTemplate = () => {
+    if (!templateForm.areaId) {
+      alert('Vui lòng chọn khu vực');
+      return;
+    }
     if (!templateForm.name || !templateForm.groupTitle) {
       alert('Vui lòng nhập tên template và nhóm');
       return;
@@ -219,13 +245,14 @@ export const Admin: React.FC<AdminProps> = ({
       return;
     }
     onCreateTemplate?.({
+      areaId: templateForm.areaId,
       name: templateForm.name,
       description: templateForm.description,
       groupTitle: templateForm.groupTitle,
       itemTitles: items,
       columnLabel: templateForm.columnLabel || 'Ca A'
     });
-    setTemplateForm({ name: '', description: '', groupTitle: 'Khu vực', columnLabel: 'Ca A', itemTitles: [''] });
+    setTemplateForm({ areaId: '', name: '', description: '', groupTitle: 'Khu vực', columnLabel: 'Ca A', itemTitles: [''] });
     setShowTemplateModal(false);
   };
 
@@ -238,10 +265,10 @@ export const Admin: React.FC<AdminProps> = ({
     }
     onAddChecklist(templateName, areaId, shift, validItems, assignedTo, verifiedBy);
     setShowChecklistModal(false);
-    setChecklistData({ 
-      templateName: '', areaId: '', shift: '', 
+    setChecklistData({
+      templateName: '', areaId: '', shift: '',
       assignedTo: '', verifiedBy: '',
-      items: [{ text: '', isCritical: false }] 
+      items: [{ text: '', isCritical: false }]
     });
   };
 
@@ -258,32 +285,58 @@ export const Admin: React.FC<AdminProps> = ({
       alert('Vui lòng điền đầy đủ: Template, Khu vực và Ngày.');
       return;
     }
-    
+
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/runs', {
+      // 1) Tạo run theo API backend (chỉ cần area_id và date)
+      const createResp = await fetch('http://127.0.0.1:8000/api/runs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('api_token')}`
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('api_token')}`,
         },
         body: JSON.stringify({
-          checklist_template_id: templateId,
-          area_id: areaId,
-          assigned_to: assignedTo || null,
-          verified_by: verifiedBy || null,
-          scheduled_for: date
-        })
+          area_id: Number(areaId),
+          date,
+        }),
       });
 
-      if (!response.ok) throw new Error('Không thể tạo công việc');
-      
+      if (!createResp.ok) {
+        const errText = await createResp.text();
+        throw new Error(`Không thể tạo công việc: ${errText}`);
+      }
+
+      const createdRun = await createResp.json();
+      const runId = createdRun?.id;
+
+      // 2) Nếu có người thực hiện/giám sát, cập nhật run bằng PUT
+      if (runId && (assignedTo || verifiedBy)) {
+        const updateResp = await fetch(`http://127.0.0.1:8000/api/runs/${runId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('api_token')}`,
+          },
+          body: JSON.stringify({
+            assigned_to: assignedTo ? Number(assignedTo) : null,
+            verified_by: verifiedBy ? Number(verifiedBy) : null,
+          }),
+        });
+
+        if (!updateResp.ok) {
+          const errText = await updateResp.text();
+          throw new Error(`Tạo xong nhưng cập nhật người phụ trách thất bại: ${errText}`);
+        }
+      }
+
       alert('✅ Đã gán việc thành công!');
       setShowAssignWorkModal(false);
       setAssignWorkData({
         templateId: '', areaId: '', assignedTo: '', verifiedBy: '',
         date: new Date().toISOString().split('T')[0]
       });
-      
+
       // Notify parent to reload runs
       if (onRunsChanged) onRunsChanged();
     } catch (error) {
@@ -476,9 +529,9 @@ export const Admin: React.FC<AdminProps> = ({
         {availableTabs.map(tab => {
           const Icon = tab.icon;
           return (
-            <button 
+            <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)} 
+              onClick={() => setActiveTab(tab.id)}
               className={`flex-1 min-w-[70px] flex flex-col items-center justify-center py-2 text-[10px] font-bold rounded-xl transition-all ${activeTab === tab.id ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500'}`}
             >
               <Icon size={16} className="mb-0.5" /> {tab.label}
@@ -526,14 +579,13 @@ export const Admin: React.FC<AdminProps> = ({
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-gray-900 text-sm truncate">{u.name}</h3>
                     <p className="text-[10px] text-gray-500 truncate mb-1">{u.email}</p>
-                    <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${
-                      u.role === Role.MANAGER ? 'bg-purple-100 text-purple-700' : 
+                    <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${u.role === Role.MANAGER ? 'bg-purple-100 text-purple-700' :
                       u.role === Role.SUPERVISOR ? 'bg-orange-100 text-orange-700' : 'bg-brand-50 text-brand-700'
-                    }`}>{u.role}</span>
+                      }`}>{u.role}</span>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => handleOpenUserModal(u)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all"><Edit2 size={16}/></button>
-                    <button onClick={() => onDeleteUser(u.id)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={16}/></button>
+                    <button onClick={() => handleOpenUserModal(u)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all"><Edit2 size={16} /></button>
+                    <button onClick={() => onDeleteUser(u.id)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={16} /></button>
                   </div>
                 </div>
               ))}
@@ -543,102 +595,101 @@ export const Admin: React.FC<AdminProps> = ({
 
         {/* --- TAB: AREAS --- */}
         {activeTab === 'AREAS' && (
-           <div className="space-y-4">
-             <div className="flex justify-between items-center px-1">
-               <h2 className="font-bold text-gray-800">Khu vực quản lý ({areas.length})</h2>
-               <button onClick={() => setShowAreaModal(true)} className="bg-brand-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-brand-100">
-                 <Plus size={16} className="mr-1" /> Thêm khu vực
-               </button>
-             </div>
-             <div className="space-y-3">
-                {areas.map(area => (
-                  <div key={area.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-3">
-                       <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-                         <MapPin size={20} />
-                       </div>
-                       <div>
-                         <h3 className="font-bold text-gray-900 text-sm">{area.name}</h3>
-                         <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-bold uppercase">{area.type}</span>
-                            <span className="text-[10px] text-gray-300 flex items-center gap-1"><QrCode size={10} /> {area.id}</span>
-                         </div>
-                       </div>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-1">
+              <h2 className="font-bold text-gray-800">Khu vực quản lý ({areas.length})</h2>
+              <button onClick={() => setShowAreaModal(true)} className="bg-brand-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-brand-100">
+                <Plus size={16} className="mr-1" /> Thêm khu vực
+              </button>
+            </div>
+            <div className="space-y-3">
+              {areas.map(area => (
+                <div key={area.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+                      <MapPin size={20} />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => {
-                          setEditingAreaId(String(area.id));
-                          setAreaData({ name: area.name, type: area.type });
-                          setShowAreaModal(true);
-                        }}
-                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button onClick={() => onDeleteArea?.(String(area.id))} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl">
-                        <Trash2 size={16} />
-                      </button>
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-sm">{area.name}</h3>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-bold uppercase">{area.type}</span>
+                        <span className="text-[10px] text-gray-300 flex items-center gap-1"><QrCode size={10} /> {area.id}</span>
+                      </div>
                     </div>
                   </div>
-                ))}
-                {areas.length === 0 && <p className="text-center text-gray-400 text-xs py-4">Chưa có khu vực nào.</p>}
-             </div>
-           </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingAreaId(String(area.id));
+                        setAreaData({ name: area.name, type: area.type });
+                        setShowAreaModal(true);
+                      }}
+                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button onClick={() => onDeleteArea?.(String(area.id))} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {areas.length === 0 && <p className="text-center text-gray-400 text-xs py-4">Chưa có khu vực nào.</p>}
+            </div>
+          </div>
         )}
 
         {/* --- TAB: SHIFTS --- */}
         {activeTab === 'SHIFTS' && (
-           <div className="space-y-4">
-             <div className="flex justify-between items-center px-1">
-               <h2 className="font-bold text-gray-800">Cấu hình Ca ({shifts.length})</h2>
-               <button onClick={() => setShowShiftModal(true)} className="bg-brand-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-brand-100">
-                 <Plus size={16} className="mr-1" /> Tạo ca
-               </button>
-             </div>
-             <div className="space-y-3">
-                {shifts.map(shift => {
-                  const appliedAreas = areas.filter(a => shift.applicableAreaIds.includes(a.id));
-                  return (
-                    <div key={shift.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                            {shift.name} 
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                              shift.type === 'OPENING' ? 'bg-green-50 text-green-600' :
-                              shift.type === 'CLOSING' ? 'bg-red-50 text-red-600' :
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-1">
+              <h2 className="font-bold text-gray-800">Cấu hình Ca ({shifts.length})</h2>
+              <button onClick={() => setShowShiftModal(true)} className="bg-brand-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-brand-100">
+                <Plus size={16} className="mr-1" /> Tạo ca
+              </button>
+            </div>
+            <div className="space-y-3">
+              {shifts.map(shift => {
+                const appliedAreas = areas.filter(a => shift.applicableAreaIds.includes(a.id));
+                return (
+                  <div key={shift.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                          {shift.name}
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${shift.type === 'OPENING' ? 'bg-green-50 text-green-600' :
+                            shift.type === 'CLOSING' ? 'bg-red-50 text-red-600' :
                               'bg-gray-100 text-gray-500'
                             }`}>{shift.type}</span>
-                          </h3>
-                          <div className="flex items-center gap-2 mt-1 text-xs text-brand-600 font-bold bg-brand-50 w-fit px-2 py-1 rounded-lg">
-                             <Clock size={12}/> {shift.startTime} - {shift.endTime}
-                          </div>
+                        </h3>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-brand-600 font-bold bg-brand-50 w-fit px-2 py-1 rounded-lg">
+                          <Clock size={12} /> {shift.startTime} - {shift.endTime}
                         </div>
-                        <button onClick={() => onDeleteShift?.(shift.id)} className="text-gray-300 hover:text-red-500 transition-colors">
-                          <Trash2 size={16} />
-                        </button>
                       </div>
-                      
-                      <div className="pt-2 border-t border-gray-50">
-                        <p className="text-[9px] text-gray-400 font-bold uppercase mb-1">Áp dụng cho:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {shift.applicableAreaIds.length === 0 ? (
-                            <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-600 font-bold">Toàn bộ hệ thống</span>
-                          ) : (
-                            appliedAreas.map(a => (
-                              <span key={a.id} className="text-[10px] bg-white border border-gray-100 px-2 py-0.5 rounded text-gray-600">
-                                {a.name}
-                              </span>
-                            ))
-                          )}
-                        </div>
+                      <button onClick={() => onDeleteShift?.(shift.id)} className="text-gray-300 hover:text-red-500 transition-colors">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-50">
+                      <p className="text-[9px] text-gray-400 font-bold uppercase mb-1">Áp dụng cho:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {shift.applicableAreaIds.length === 0 ? (
+                          <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-600 font-bold">Toàn bộ hệ thống</span>
+                        ) : (
+                          appliedAreas.map(a => (
+                            <span key={a.id} className="text-[10px] bg-white border border-gray-100 px-2 py-0.5 rounded text-gray-600">
+                              {a.name}
+                            </span>
+                          ))
+                        )}
                       </div>
                     </div>
-                  );
-                })}
-             </div>
-           </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* --- TAB: CHECKLISTS --- */}
@@ -652,7 +703,7 @@ export const Admin: React.FC<AdminProps> = ({
                     <h3 className="font-bold text-sm">Làm mới dữ liệu</h3>
                     <p className="text-[10px] text-brand-100 opacity-90">Tải lại danh sách công việc từ hệ thống để cập nhật trạng thái mới nhất.</p>
                   </div>
-                  <button 
+                  <button
                     onClick={onCloneDaily}
                     className="bg-white text-brand-700 px-3 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-brand-50 active:scale-95 transition-transform flex items-center gap-1"
                   >
@@ -674,8 +725,8 @@ export const Admin: React.FC<AdminProps> = ({
 
             <div className="space-y-4">
               {checklists.map((cl) => {
-                 const isUnassigned = !cl.assignedTo || !cl.verifiedBy;
-                 return (
+                const isUnassigned = !cl.assignedTo || !cl.verifiedBy;
+                return (
                   <div key={cl.id} className={`bg-white p-4 rounded-2xl border shadow-sm space-y-4 ${isUnassigned ? 'border-red-100 ring-1 ring-red-50' : 'border-gray-100'}`}>
                     <div className="flex justify-between items-start">
                       <div>
@@ -684,17 +735,17 @@ export const Admin: React.FC<AdminProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         {isUnassigned && <AlertCircle size={16} className="text-red-400" />}
-                        <button onClick={() => handleDeleteRun(cl.id)} className="text-red-400 hover:text-red-600 transition-colors"><Trash2 size={14}/></button>
+                        <button onClick={() => handleDeleteRun(cl.id)} className="text-red-400 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 gap-3">
                       <div className="flex flex-col gap-1">
                         <label className={`text-[9px] font-bold uppercase flex items-center gap-1 ${!cl.assignedTo ? 'text-red-500' : 'text-gray-400'}`}>
                           <UserCheck size={10} /> Người thực hiện
                         </label>
-                        <select 
-                          value={cl.assignedTo || ''} 
+                        <select
+                          value={cl.assignedTo || ''}
                           onChange={(e) => onAssignChecklist?.(cl.id, { assignedTo: e.target.value })}
                           className={`text-xs p-2.5 rounded-xl border-none font-bold focus:ring-1 outline-none ${!cl.assignedTo ? 'bg-red-50 text-red-600 focus:ring-red-200' : 'bg-gray-50 text-brand-700 focus:ring-brand-500'}`}
                         >
@@ -707,8 +758,8 @@ export const Admin: React.FC<AdminProps> = ({
                         <label className={`text-[9px] font-bold uppercase flex items-center gap-1 ${!cl.verifiedBy ? 'text-red-500' : 'text-gray-400'}`}>
                           <ShieldCheck size={10} /> Người kiểm tra
                         </label>
-                        <select 
-                          value={cl.verifiedBy || ''} 
+                        <select
+                          value={cl.verifiedBy || ''}
                           onChange={(e) => onAssignChecklist?.(cl.id, { verifiedBy: e.target.value })}
                           className={`text-xs p-2.5 rounded-xl border-none font-bold focus:ring-1 outline-none ${!cl.verifiedBy ? 'bg-red-50 text-red-600 focus:ring-red-200' : 'bg-purple-50 text-purple-700 focus:ring-purple-500'}`}
                         >
@@ -731,9 +782,14 @@ export const Admin: React.FC<AdminProps> = ({
           <div className="space-y-4">
             <div className="flex justify-between items-center px-1">
               <h2 className="font-bold text-gray-800">Template Checklist ({templates.length})</h2>
-              <button onClick={() => setShowTemplateModal(true)} className="bg-brand-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-brand-100">
-                <Plus size={16} className="mr-1" /> Tạo template
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setShowImportModal(true)} className="bg-green-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-green-100">
+                  <FileSpreadsheet size={16} className="mr-1" /> Import Excel
+                </button>
+                <button onClick={() => setShowTemplateModal(true)} className="bg-brand-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-brand-100">
+                  <Plus size={16} className="mr-1" /> Tạo template
+                </button>
+              </div>
             </div>
             <div className="space-y-3">
               {templates.map((t: any) => (
@@ -747,13 +803,13 @@ export const Admin: React.FC<AdminProps> = ({
                       <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${t.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {t.is_active ? 'Active' : 'Inactive'}
                       </span>
-                      <button 
+                      <button
                         onClick={() => handleOpenEditTemplate(t)}
                         className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-bold hover:bg-blue-100 flex items-center gap-1"
                       >
                         <Edit size={12} /> Sửa
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleDeleteTemplate(t.id)}
                         className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-lg font-bold hover:bg-red-100 flex items-center gap-1"
                       >
@@ -772,6 +828,47 @@ export const Admin: React.FC<AdminProps> = ({
                 <p className="text-center text-gray-400 text-xs py-6">Chưa có template nào.</p>
               )}
             </div>
+
+            {/* Import Template Modal */}
+            {showImportModal && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl w-full max-w-md p-6">
+                  <h3 className="text-lg font-bold mb-4">Import Template từ Excel</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">File Excel (*.xlsx)</label>
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={(e) => setImportFile(e.target.files ? e.target.files[0] : null)}
+                        className="w-full text-xs"
+                      />
+                      <p className="text-[10px] text-gray-500 mt-1">Hỗ trợ import nhiều sheet cùng lúc.</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Tên Template (Tùy chọn)</label>
+                      <input
+                        type="text"
+                        value={importName}
+                        onChange={(e) => setImportName(e.target.value)}
+                        placeholder="Để trống sẽ lấy tên từ file/sheet"
+                        className="w-full p-2 border rounded-xl text-xs"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <button onClick={() => setShowImportModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs">Hủy</button>
+                    <button
+                      onClick={handleImportTemplate}
+                      disabled={isSubmitting || !importFile}
+                      className="flex-[2] py-2.5 bg-brand-600 text-white rounded-xl font-bold text-xs"
+                    >
+                      {isSubmitting ? 'Đang xử lý...' : 'Import Ngay'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -784,11 +881,11 @@ export const Admin: React.FC<AdminProps> = ({
                   <h3 className="font-bold text-sm">Gán việc mới</h3>
                   <p className="text-[10px] text-blue-100 opacity-90">Tạo công việc mới cho nhân viên từ template có sẵn.</p>
                 </div>
-                <button 
+                <button
                   onClick={() => setShowAssignWorkModal(true)}
                   className="bg-white text-purple-700 px-3 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-purple-50 active:scale-95 transition-transform flex items-center gap-1"
                 >
-                  <UserCheck size={14}/> Gán việc
+                  <UserCheck size={14} /> Gán việc
                 </button>
               </div>
             </div>
@@ -812,44 +909,44 @@ export const Admin: React.FC<AdminProps> = ({
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-gray-900">{editingUserId ? 'Sửa thông tin' : 'Thêm nhân sự'}</h3>
-              <button onClick={() => setShowUserModal(false)} className="text-gray-400"><X size={24}/></button>
+              <button onClick={() => setShowUserModal(false)} className="text-gray-400"><X size={24} /></button>
             </div>
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Họ tên</label>
-                <input type="text" value={userData.name} onChange={e => setUserData({...userData, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none" placeholder="VD: Nguyễn Văn A"/>
+                <input type="text" value={userData.name} onChange={e => setUserData({ ...userData, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none" placeholder="VD: Nguyễn Văn A" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Email</label>
-                <input type="email" value={userData.email} onChange={e => setUserData({...userData, email: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none" placeholder="email@ecocheck.vn"/>
+                <input type="email" value={userData.email} onChange={e => setUserData({ ...userData, email: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none" placeholder="email@ecocheck.vn" />
               </div>
-              
+
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 flex items-center gap-1">
                   {editingUserId ? <><KeyRound size={10} /> Đặt lại mật khẩu</> : 'Mật khẩu'}
                 </label>
                 <div className="relative">
-                   <input 
-                    type={showPwd ? "text" : "password"} 
-                    value={userData.password} 
-                    onChange={e => setUserData({...userData, password: e.target.value})} 
-                    className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm pr-10 focus:ring-2 focus:ring-brand-100 outline-none" 
+                  <input
+                    type={showPwd ? "text" : "password"}
+                    value={userData.password}
+                    onChange={e => setUserData({ ...userData, password: e.target.value })}
+                    className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm pr-10 focus:ring-2 focus:ring-brand-100 outline-none"
                     placeholder={editingUserId ? "Nhập để đổi mật khẩu mới..." : "••••••••"}
-                   />
-                   <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                     {showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}
-                   </button>
+                  />
+                  <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Vai trò</label>
-                <select value={userData.role} onChange={e => setUserData({...userData, role: e.target.value as Role})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold text-gray-700 focus:ring-2 focus:ring-brand-100 outline-none">
+                <select value={userData.role} onChange={e => setUserData({ ...userData, role: e.target.value as Role })} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold text-gray-700 focus:ring-2 focus:ring-brand-100 outline-none">
                   {Object.values(Role).map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
-              <button 
-                onClick={handleSubmitUser} 
+              <button
+                onClick={handleSubmitUser}
                 disabled={isSubmitting}
                 className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-lg shadow-brand-100 active:scale-95 transition-all mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -864,22 +961,22 @@ export const Admin: React.FC<AdminProps> = ({
       {showAreaModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 duration-200">
-             <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-gray-900">{editingAreaId ? 'Sửa khu vực' : 'Thêm khu vực mới'}</h3>
               <button onClick={() => {
                 setShowAreaModal(false);
                 setEditingAreaId(null);
                 setAreaData({ name: '', type: 'F&B' });
-              }} className="text-gray-400"><X size={24}/></button>
+              }} className="text-gray-400"><X size={24} /></button>
             </div>
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Tên khu vực</label>
-                <input type="text" value={areaData.name} onChange={e => setAreaData({...areaData, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none" placeholder="VD: Bếp Nhà Hàng Âu"/>
+                <input type="text" value={areaData.name} onChange={e => setAreaData({ ...areaData, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none" placeholder="VD: Bếp Nhà Hàng Âu" />
               </div>
-               <div className="space-y-1">
+              <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Loại hình</label>
-                <select value={areaData.type} onChange={e => setAreaData({...areaData, type: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold text-gray-700 focus:ring-2 focus:ring-brand-100 outline-none">
+                <select value={areaData.type} onChange={e => setAreaData({ ...areaData, type: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold text-gray-700 focus:ring-2 focus:ring-brand-100 outline-none">
                   <option value="F&B">F&B (Nhà hàng/Bếp)</option>
                   <option value="Hotel">Hotel (Lưu trú)</option>
                   <option value="Facility">Facility (Tiện ích chung)</option>
@@ -888,8 +985,8 @@ export const Admin: React.FC<AdminProps> = ({
                   <option value="General">General (Khác)</option>
                 </select>
               </div>
-              <button 
-                onClick={handleSubmitArea} 
+              <button
+                onClick={handleSubmitArea}
                 disabled={isSubmitting}
                 className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-lg shadow-brand-100 active:scale-95 transition-all mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -904,28 +1001,28 @@ export const Admin: React.FC<AdminProps> = ({
       {showShiftModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 duration-200">
-             <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-gray-900">Thiết lập Ca làm việc</h3>
-              <button onClick={() => setShowShiftModal(false)} className="text-gray-400"><X size={24}/></button>
+              <button onClick={() => setShowShiftModal(false)} className="text-gray-400"><X size={24} /></button>
             </div>
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Tên ca</label>
-                <input type="text" value={shiftData.name} onChange={e => setShiftData({...shiftData, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none" placeholder="VD: Ca Sáng"/>
+                <input type="text" value={shiftData.name} onChange={e => setShiftData({ ...shiftData, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none" placeholder="VD: Ca Sáng" />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                 <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Bắt đầu</label>
-                    <input type="time" value={shiftData.startTime} onChange={e => setShiftData({...shiftData, startTime: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none font-bold text-gray-700"/>
-                 </div>
-                 <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Kết thúc</label>
-                    <input type="time" value={shiftData.endTime} onChange={e => setShiftData({...shiftData, endTime: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none font-bold text-gray-700"/>
-                 </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Bắt đầu</label>
+                  <input type="time" value={shiftData.startTime} onChange={e => setShiftData({ ...shiftData, startTime: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none font-bold text-gray-700" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Kết thúc</label>
+                  <input type="time" value={shiftData.endTime} onChange={e => setShiftData({ ...shiftData, endTime: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none font-bold text-gray-700" />
+                </div>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Phân loại</label>
-                <select value={shiftData.type} onChange={e => setShiftData({...shiftData, type: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold text-gray-700 outline-none">
+                <select value={shiftData.type} onChange={e => setShiftData({ ...shiftData, type: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-bold text-gray-700 outline-none">
                   <option value="NORMAL">Thường</option>
                   <option value="OPENING">Đầu ca (Mở cửa)</option>
                   <option value="HANDOVER">Giao ca</option>
@@ -935,26 +1032,26 @@ export const Admin: React.FC<AdminProps> = ({
 
               {/* Area Multi-select (Simple Checkboxes) */}
               <div className="space-y-2 pt-2 border-t border-gray-50">
-                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block">Khu vực áp dụng (Để trống = Tất cả)</label>
-                 <div className="max-h-32 overflow-y-auto grid grid-cols-2 gap-2">
-                   {areas.map(area => (
-                     <label key={area.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 border border-transparent hover:border-gray-200">
-                       <input 
-                         type="checkbox" 
-                         className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500"
-                         checked={shiftData.applicableAreaIds.includes(area.id)}
-                         onChange={(e) => {
-                           if (e.target.checked) {
-                             setShiftData({...shiftData, applicableAreaIds: [...shiftData.applicableAreaIds, area.id]});
-                           } else {
-                             setShiftData({...shiftData, applicableAreaIds: shiftData.applicableAreaIds.filter(id => id !== area.id)});
-                           }
-                         }}
-                       />
-                       <span className="text-xs font-medium text-gray-700 truncate">{area.name}</span>
-                     </label>
-                   ))}
-                 </div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1 block">Khu vực áp dụng (Để trống = Tất cả)</label>
+                <div className="max-h-32 overflow-y-auto grid grid-cols-2 gap-2">
+                  {areas.map(area => (
+                    <label key={area.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 border border-transparent hover:border-gray-200">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500"
+                        checked={shiftData.applicableAreaIds.includes(area.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setShiftData({ ...shiftData, applicableAreaIds: [...shiftData.applicableAreaIds, area.id] });
+                          } else {
+                            setShiftData({ ...shiftData, applicableAreaIds: shiftData.applicableAreaIds.filter(id => id !== area.id) });
+                          }
+                        }}
+                      />
+                      <span className="text-xs font-medium text-gray-700 truncate">{area.name}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               <button onClick={handleSubmitShift} className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-lg shadow-brand-100 active:scale-95 transition-all mt-2">
@@ -971,45 +1068,45 @@ export const Admin: React.FC<AdminProps> = ({
           <div className="bg-white rounded-3xl w-full max-w-md p-6 h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6 shrink-0">
               <h3 className="text-lg font-bold text-gray-900">Thiết kế mẫu Checklist</h3>
-              <button onClick={() => setShowChecklistModal(false)} className="text-gray-400"><X size={24}/></button>
+              <button onClick={() => setShowChecklistModal(false)} className="text-gray-400"><X size={24} /></button>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto pr-1 space-y-6">
               {/* Thông tin cơ bản */}
               <div className="space-y-4">
                 <p className="text-[10px] font-bold text-brand-600 uppercase border-b border-brand-50 pb-1">1. Thông tin chung</p>
                 <div className="grid grid-cols-1 gap-3">
-                  <input type="text" placeholder="Tên mẫu Checklist" className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm" value={checklistData.templateName} onChange={e => setChecklistData({...checklistData, templateName: e.target.value})} />
-                  
+                  <input type="text" placeholder="Tên mẫu Checklist" className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm" value={checklistData.templateName} onChange={e => setChecklistData({ ...checklistData, templateName: e.target.value })} />
+
                   <div className="grid grid-cols-2 gap-3">
-                     <select 
-                      value={checklistData.areaId} 
-                      onChange={e => setChecklistData({...checklistData, areaId: e.target.value, shift: ''})} // Reset shift when area changes
+                    <select
+                      value={checklistData.areaId}
+                      onChange={e => setChecklistData({ ...checklistData, areaId: e.target.value, shift: '' })} // Reset shift when area changes
                       className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none"
-                     >
-                       <option value="">-- Chọn Khu vực --</option>
-                       {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                     </select>
-                     
-                     {/* SHIFT SELECTION DROPDOWN */}
-                     <select
-                       value={checklistData.shift}
-                       onChange={e => setChecklistData({...checklistData, shift: e.target.value})}
-                       disabled={!checklistData.areaId}
-                       className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none disabled:bg-gray-100 disabled:text-gray-400"
-                     >
-                       <option value="">-- Chọn Ca --</option>
-                       {getAvailableShiftsForArea(checklistData.areaId).map(s => (
-                         <option key={s.id} value={`${s.name} (${s.startTime})`}>
-                           {s.name} ({s.startTime} - {s.endTime})
-                         </option>
-                       ))}
-                       <option value="Khác">Khác (Nhập tay...)</option>
-                     </select>
+                    >
+                      <option value="">-- Chọn Khu vực --</option>
+                      {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+
+                    {/* SHIFT SELECTION DROPDOWN */}
+                    <select
+                      value={checklistData.shift}
+                      onChange={e => setChecklistData({ ...checklistData, shift: e.target.value })}
+                      disabled={!checklistData.areaId}
+                      className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                      <option value="">-- Chọn Ca --</option>
+                      {getAvailableShiftsForArea(checklistData.areaId).map(s => (
+                        <option key={s.id} value={`${s.name} (${s.startTime})`}>
+                          {s.name} ({s.startTime} - {s.endTime})
+                        </option>
+                      ))}
+                      <option value="Khác">Khác (Nhập tay...)</option>
+                    </select>
                   </div>
                   {/* Fallback for manual shift entry */}
                   {checklistData.shift === 'Khác' && (
-                     <input type="text" placeholder="Nhập tên ca..." className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm" onChange={e => setChecklistData({...checklistData, shift: e.target.value})} />
+                    <input type="text" placeholder="Nhập tên ca..." className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm" onChange={e => setChecklistData({ ...checklistData, shift: e.target.value })} />
                   )}
                 </div>
               </div>
@@ -1020,9 +1117,9 @@ export const Admin: React.FC<AdminProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[10px] text-gray-400 font-bold ml-1">THỰC HIỆN</label>
-                    <select 
-                      value={checklistData.assignedTo} 
-                      onChange={e => setChecklistData({...checklistData, assignedTo: e.target.value})}
+                    <select
+                      value={checklistData.assignedTo}
+                      onChange={e => setChecklistData({ ...checklistData, assignedTo: e.target.value })}
                       className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold"
                     >
                       <option value="">-- Chọn --</option>
@@ -1031,9 +1128,9 @@ export const Admin: React.FC<AdminProps> = ({
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] text-gray-400 font-bold ml-1">KIỂM TRA</label>
-                    <select 
-                      value={checklistData.verifiedBy} 
-                      onChange={e => setChecklistData({...checklistData, verifiedBy: e.target.value})}
+                    <select
+                      value={checklistData.verifiedBy}
+                      onChange={e => setChecklistData({ ...checklistData, verifiedBy: e.target.value })}
                       className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold"
                     >
                       <option value="">-- Chọn --</option>
@@ -1042,33 +1139,33 @@ export const Admin: React.FC<AdminProps> = ({
                   </div>
                 </div>
               </div>
-              
+
               {/* Danh sách hạng mục */}
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                   <p className="text-[10px] font-bold text-brand-600 uppercase">3. Danh sách hạng mục</p>
-                   <button onClick={() => setChecklistData({...checklistData, items: [...checklistData.items, {text:'', isCritical:false}]})} className="text-brand-600 flex items-center gap-1 text-[10px] font-bold uppercase"><PlusCircle size={14}/> Thêm</button>
+                  <p className="text-[10px] font-bold text-brand-600 uppercase">3. Danh sách hạng mục</p>
+                  <button onClick={() => setChecklistData({ ...checklistData, items: [...checklistData.items, { text: '', isCritical: false }] })} className="text-brand-600 flex items-center gap-1 text-[10px] font-bold uppercase"><PlusCircle size={14} /> Thêm</button>
                 </div>
                 {checklistData.items.map((it, idx) => (
                   <div key={idx} className="flex gap-2 mb-3 items-start animate-in slide-in-from-right-2 duration-200">
                     <div className="flex-1">
                       <input type="text" className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-xl text-xs" value={it.text} placeholder={`Hạng mục ${idx + 1}`} onChange={e => {
-                        const n = [...checklistData.items]; n[idx].text = e.target.value; setChecklistData({...checklistData, items: n});
+                        const n = [...checklistData.items]; n[idx].text = e.target.value; setChecklistData({ ...checklistData, items: n });
                       }} />
                       <button onClick={() => {
-                        const n = [...checklistData.items]; n[idx].isCritical = !n[idx].isCritical; setChecklistData({...checklistData, items: n});
+                        const n = [...checklistData.items]; n[idx].isCritical = !n[idx].isCritical; setChecklistData({ ...checklistData, items: n });
                       }} className={`mt-1.5 text-[9px] font-bold px-2 py-0.5 rounded border transition-colors ${it.isCritical ? 'bg-red-50 text-red-600 border-red-100' : 'bg-gray-50 text-gray-400 border-gray-100'}`}>
                         {it.isCritical ? 'QUAN TRỌNG' : 'THÔNG THƯỜNG'}
                       </button>
                     </div>
                     {checklistData.items.length > 1 && (
-                      <button onClick={() => setChecklistData({...checklistData, items: checklistData.items.filter((_, i) => i !== idx)})} className="text-red-300 hover:text-red-500 mt-2.5"><MinusCircle size={20}/></button>
+                      <button onClick={() => setChecklistData({ ...checklistData, items: checklistData.items.filter((_, i) => i !== idx) })} className="text-red-300 hover:text-red-500 mt-2.5"><MinusCircle size={20} /></button>
                     )}
                   </div>
                 ))}
               </div>
             </div>
-            
+
             <div className="pt-6 shrink-0">
               <button onClick={handleSubmitChecklist} className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-xl shadow-brand-100 active:scale-95 transition-all">Tạo Checklist mới</button>
             </div>
@@ -1082,13 +1179,26 @@ export const Admin: React.FC<AdminProps> = ({
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-gray-900">Tạo Template</h3>
-              <button onClick={() => setShowTemplateModal(false)} className="text-gray-400"><X size={24}/></button>
+              <button onClick={() => setShowTemplateModal(false)} className="text-gray-400"><X size={24} /></button>
             </div>
             <div className="space-y-4">
               <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase ml-1 mb-1">Khu vực *</label>
+                <select
+                  value={templateForm.areaId}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, areaId: e.target.value }))}
+                  className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
+                >
+                  <option value="">-- Chọn khu vực --</option>
+                  {areas.map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-[10px] font-bold text-gray-400 uppercase ml-1 mb-1">Tên template</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={templateForm.name}
                   onChange={(e) => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
@@ -1163,7 +1273,7 @@ export const Admin: React.FC<AdminProps> = ({
                   ))}
                 </div>
               </div>
-              <button 
+              <button
                 onClick={handleSubmitTemplate}
                 className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold shadow-lg shadow-brand-200 active:scale-95 transition-all mt-2"
               >
@@ -1180,14 +1290,14 @@ export const Admin: React.FC<AdminProps> = ({
           <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-gray-900">Gán việc mới</h3>
-              <button onClick={() => setShowAssignWorkModal(false)} className="text-gray-400"><X size={24}/></button>
+              <button onClick={() => setShowAssignWorkModal(false)} className="text-gray-400"><X size={24} /></button>
             </div>
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Template Checklist *</label>
-                <select 
-                  value={assignWorkData.templateId} 
-                  onChange={e => setAssignWorkData({...assignWorkData, templateId: e.target.value})}
+                <select
+                  value={assignWorkData.templateId}
+                  onChange={e => setAssignWorkData({ ...assignWorkData, templateId: e.target.value })}
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 >
                   <option value="">-- Chọn template --</option>
@@ -1199,9 +1309,9 @@ export const Admin: React.FC<AdminProps> = ({
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Khu vực *</label>
-                <select 
-                  value={assignWorkData.areaId} 
-                  onChange={e => setAssignWorkData({...assignWorkData, areaId: e.target.value})}
+                <select
+                  value={assignWorkData.areaId}
+                  onChange={e => setAssignWorkData({ ...assignWorkData, areaId: e.target.value })}
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 >
                   <option value="">-- Chọn khu vực --</option>
@@ -1213,9 +1323,9 @@ export const Admin: React.FC<AdminProps> = ({
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Người thực hiện (tùy chọn)</label>
-                <select 
-                  value={assignWorkData.assignedTo} 
-                  onChange={e => setAssignWorkData({...assignWorkData, assignedTo: e.target.value})}
+                <select
+                  value={assignWorkData.assignedTo}
+                  onChange={e => setAssignWorkData({ ...assignWorkData, assignedTo: e.target.value })}
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 >
                   <option value="">-- Chưa phân công --</option>
@@ -1227,9 +1337,9 @@ export const Admin: React.FC<AdminProps> = ({
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Người kiểm tra (tùy chọn)</label>
-                <select 
-                  value={assignWorkData.verifiedBy} 
-                  onChange={e => setAssignWorkData({...assignWorkData, verifiedBy: e.target.value})}
+                <select
+                  value={assignWorkData.verifiedBy}
+                  onChange={e => setAssignWorkData({ ...assignWorkData, verifiedBy: e.target.value })}
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 >
                   <option value="">-- Chưa phân công --</option>
@@ -1241,15 +1351,15 @@ export const Admin: React.FC<AdminProps> = ({
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Ngày thực hiện *</label>
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   value={assignWorkData.date}
-                  onChange={e => setAssignWorkData({...assignWorkData, date: e.target.value})}
+                  onChange={e => setAssignWorkData({ ...assignWorkData, date: e.target.value })}
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 />
               </div>
 
-              <button 
+              <button
                 onClick={handleSubmitAssignWork}
                 className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-700 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-all mt-2"
               >
@@ -1266,16 +1376,16 @@ export const Admin: React.FC<AdminProps> = ({
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-gray-900">Chỉnh sửa Template: {editTemplateData.name}</h3>
-              <button onClick={() => setShowEditTemplateModal(false)} className="text-gray-400"><X size={24}/></button>
+              <button onClick={() => setShowEditTemplateModal(false)} className="text-gray-400"><X size={24} /></button>
             </div>
-            
+
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Tên Template *</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editTemplateData.name}
-                  onChange={e => setEditTemplateData({...editTemplateData, name: e.target.value})}
+                  onChange={e => setEditTemplateData({ ...editTemplateData, name: e.target.value })}
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                   placeholder="Tên template"
                 />
@@ -1283,9 +1393,9 @@ export const Admin: React.FC<AdminProps> = ({
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Mô tả</label>
-                <textarea 
+                <textarea
                   value={editTemplateData.description}
-                  onChange={e => setEditTemplateData({...editTemplateData, description: e.target.value})}
+                  onChange={e => setEditTemplateData({ ...editTemplateData, description: e.target.value })}
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                   rows={2}
                   placeholder="Mô tả template"
@@ -1306,34 +1416,34 @@ export const Admin: React.FC<AdminProps> = ({
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nhóm và hạng mục</label>
                   <div className="flex gap-2">
-                    <button onClick={_handleAddGroupToTemplate} className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded-lg font-bold flex items-center gap-1"><PlusCircle size={12}/> Nhóm</button>
+                    <button onClick={_handleAddGroupToTemplate} className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded-lg font-bold flex items-center gap-1"><PlusCircle size={12} /> Nhóm</button>
                   </div>
                 </div>
 
                 {editTemplateData.groups.map((group, gIdx) => (
                   <div key={gIdx} className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-3">
                     <div className="flex gap-2 items-center">
-                      <input 
+                      <input
                         type="text"
                         value={group.title}
                         onChange={e => _handleUpdateGroupTitle(gIdx, e.target.value)}
                         className="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-sm font-bold"
                         placeholder={`Tên nhóm ${gIdx + 1}`}
                       />
-                      <button onClick={() => _handleRemoveGroupFromTemplate(gIdx)} className="text-red-500 hover:text-red-700 text-xs"><Trash2 size={14}/></button>
+                      <button onClick={() => _handleRemoveGroupFromTemplate(gIdx)} className="text-red-500 hover:text-red-700 text-xs"><Trash2 size={14} /></button>
                     </div>
 
                     <div className="space-y-2">
                       {group.items.map((item, iIdx) => (
                         <div key={iIdx} className="flex gap-2 items-center">
-                          <input 
+                          <input
                             type="text"
                             value={item.title}
                             onChange={e => _handleUpdateItem(gIdx, iIdx, 'title', e.target.value)}
                             className="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-xs"
                             placeholder={`Hạng mục ${iIdx + 1}`}
                           />
-                          <input 
+                          <input
                             type="text"
                             value={item.instructions || ''}
                             onChange={e => _handleUpdateItem(gIdx, iIdx, 'instructions', e.target.value)}
@@ -1341,7 +1451,7 @@ export const Admin: React.FC<AdminProps> = ({
                             placeholder="Hướng dẫn (tuỳ chọn)"
                           />
                           <label className="flex items-center gap-1 text-xs">
-                            <input 
+                            <input
                               type="checkbox"
                               checked={item.is_critical}
                               onChange={e => _handleUpdateItem(gIdx, iIdx, 'is_critical', e.target.checked)}
@@ -1349,10 +1459,10 @@ export const Admin: React.FC<AdminProps> = ({
                             />
                             <span className="text-red-600 font-bold">Critical</span>
                           </label>
-                          <button onClick={() => _handleRemoveItemFromGroup(gIdx, iIdx)} className="text-red-500 hover:text-red-700 text-xs"><MinusCircle size={14}/></button>
+                          <button onClick={() => _handleRemoveItemFromGroup(gIdx, iIdx)} className="text-red-500 hover:text-red-700 text-xs"><MinusCircle size={14} /></button>
                         </div>
                       ))}
-                      <button onClick={() => _handleAddItemToGroup(gIdx)} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-lg font-bold flex items-center gap-1"><PlusCircle size={12}/> Hạng mục</button>
+                      <button onClick={() => _handleAddItemToGroup(gIdx)} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-lg font-bold flex items-center gap-1"><PlusCircle size={12} /> Hạng mục</button>
                     </div>
                   </div>
                 ))}
@@ -1361,7 +1471,7 @@ export const Admin: React.FC<AdminProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Cột (phân vai/ca)</label>
-                  <button onClick={_handleAddColumn} className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-lg font-bold flex items-center gap-1"><PlusCircle size={12}/> Cột</button>
+                  <button onClick={_handleAddColumn} className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-lg font-bold flex items-center gap-1"><PlusCircle size={12} /> Cột</button>
                 </div>
                 {editTemplateData.columns.map((col, idx) => (
                   <div key={idx} className="flex flex-col md:flex-row gap-2 bg-gray-50 p-3 rounded-xl border border-gray-100">
@@ -1383,12 +1493,12 @@ export const Admin: React.FC<AdminProps> = ({
                       className="flex-1 p-2 bg-white border border-gray-200 rounded-lg text-xs"
                       placeholder="Options (phân tách dấu phẩy)"
                     />
-                    <button onClick={() => _handleRemoveColumn(idx)} className="text-red-500 hover:text-red-700 text-xs self-start"><Trash2 size={14}/></button>
+                    <button onClick={() => _handleRemoveColumn(idx)} className="text-red-500 hover:text-red-700 text-xs self-start"><Trash2 size={14} /></button>
                   </div>
                 ))}
               </div>
 
-              <button 
+              <button
                 onClick={handleSaveEditTemplate}
                 disabled={isSubmitting}
                 className="w-full py-4 bg-gradient-to-r from-green-600 to-blue-700 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-all mt-2 disabled:opacity-50 disabled:cursor-not-allowed"

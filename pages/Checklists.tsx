@@ -9,6 +9,7 @@ interface ChecklistsProps {
   onSelectChecklist: (id: string) => void;
   currentUser: User;
   users: User[];
+  onRefresh?: () => Promise<void>;
 }
 
 // Helper: Format date to Vietnamese format
@@ -61,7 +62,7 @@ const countByStatus = (checklists: Checklist[]): { pending: number; inProgress: 
   };
 };
 
-export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChecklist, currentUser, users }) => {
+export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChecklist, currentUser, users, onRefresh }) => {
   const [filter, setFilter] = useState<'ALL' | 'MINE' | 'TO_VERIFY' | 'COMPLETED'>(
     currentUser.role === Role.STAFF ? 'MINE' : (currentUser.role === Role.MANAGER || currentUser.role === Role.SUPERVISOR ? 'TO_VERIFY' : 'ALL')
   );
@@ -80,6 +81,14 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
 
   // History Modal State
   const [historyTarget, setHistoryTarget] = useState<{templateName: string, areaId: string, areaName: string} | null>(null);
+
+  // Refresh data when component mounts (for STAFF to see newly assigned tasks)
+  useEffect(() => {
+    if (onRefresh && currentUser.role === Role.STAFF) {
+      onRefresh();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-update selectedDate when checklists change
   // eslint-disable-next-line react-hooks/exhaustive-deps

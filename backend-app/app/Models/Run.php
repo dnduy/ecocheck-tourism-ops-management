@@ -11,14 +11,16 @@ class Run extends Model
 {
     use HasFactory;
 
+    protected $table = 'checklist_runs';
+
     protected $fillable = [
-        'checklist_template_id',
+        'template_id',
         'area_id',
         'status',
         'work_status',
         'assigned_to',
         'verified_by',
-        'scheduled_for',
+        'run_date',
         'started_at',
         'completed_at',
         'review_requested_at',
@@ -28,7 +30,7 @@ class Run extends Model
     ];
 
     protected $casts = [
-        'scheduled_for' => 'date',
+        'run_date' => 'date',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'review_requested_at' => 'datetime',
@@ -36,7 +38,7 @@ class Run extends Model
 
     public function template(): BelongsTo
     {
-        return $this->belongsTo(ChecklistTemplate::class, 'checklist_template_id');
+        return $this->belongsTo(ChecklistTemplate::class, 'template_id');
     }
 
     public function area(): BelongsTo

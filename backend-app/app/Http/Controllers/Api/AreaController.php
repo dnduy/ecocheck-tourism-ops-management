@@ -10,27 +10,36 @@ use Illuminate\Http\JsonResponse;
 
 class AreaController extends Controller
 {
+    use \App\Traits\ApiResponse;
+
+    protected $areaService;
+
+    public function __construct(\App\Interfaces\AreaServiceInterface $areaService)
+    {
+        $this->areaService = $areaService;
+    }
+
     public function index(): JsonResponse
     {
-        $areas = Area::orderBy('name')->get();
-        return response()->json($areas);
+        $areas = $this->areaService->getAllAreas();
+        return $this->successResponse($areas, 'Lấy danh sách khu vực thành công');
     }
 
     public function store(StoreAreaRequest $request): JsonResponse
     {
-        $area = Area::create($request->validated());
-        return response()->json($area, 201);
+        $area = $this->areaService->createArea($request->validated());
+        return $this->successResponse($area, 'Tạo khu vực thành công', 201);
     }
 
     public function update(UpdateAreaRequest $request, Area $area): JsonResponse
     {
-        $area->update($request->validated());
-        return response()->json($area);
+        $area = $this->areaService->updateArea($area, $request->validated());
+        return $this->successResponse($area, 'Cập nhật khu vực thành công');
     }
 
     public function destroy(Area $area): JsonResponse
     {
-        $area->delete();
-        return response()->json(['message' => 'Deleted']);
+        $this->areaService->deleteArea($area);
+        return $this->successResponse(null, 'Xóa khu vực thành công');
     }
 }

@@ -1,14 +1,13 @@
 <?php
 
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Run;
-use App\Models\Signoff;
+use App\Interfaces\RunServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 /**
  * ReviewController - Quản lý workflow duyệt checklist
@@ -17,121 +16,85 @@ use Carbon\Carbon;
  */
 class ReviewController extends Controller
 {
+    use \App\Traits\ApiResponse;
+
+    protected $runService;
+
+    public function __construct(RunServiceInterface $runService)
+    {
+        $this->runService = $runService;
+    }
+
     /**
      * Lấy danh sách runs cần duyệt
      */
     public function getPendingReviews(Request $request): JsonResponse
     {
-        $user = $request->user();
-        
-        $runs = Run::with([
-                'area',
-                'template',
-                'assignedUser',
-                'verifiedUser',
-                'signoffs.user'
-            ])
-            ->where('work_status', 'needs_review')
-            ->where('verified_by', $user->id)  // Chỉ reviewer mới thấy
-            ->orderByDesc('review_requested_at')
-            ->paginate(20);
-
-        return response()->json($runs);
+        // Paginator is returned from service
+        $runs = $this->runService->getPendingReviews($request->user(), 20);
+        return $this->successResponse($runs, 'Lấy danh sách cần duyệt thành công');
     }
 
     /**
-     * Xem chi tiết run cần duyệt (kèm tất cả entries và signoffs)
+     * Xem chi tiết run cần duyệt
      */
     public function showForReview(Run $run, Request $request): JsonResponse
     {
+        // Service should handle loading relations.
+        // We can reuse getRunDetail or create specific method if permissions differ.
+        // The original logic had permission checks. Service logic for 'getRunDetail' is generic CRUD.
+        // But for review specific view, we might want to check if user is allowed.
+        // The Service methods I added (startWork, etc) have checks. getRunDetail just loads data.
+        // For simplicity and to stick to "thin controller", I'll use getRunDetail but strictly we should check permissions here or in service.
+        // Original controller checked: if ($run->verified_by !== $user->id && $user->role !== 'manager')
+        // I will add this check here or assume middleware handles it? No, explicit check is better.
+
         $user = $request->user();
-        
-        // Verify reviewer permission
         if ($run->verified_by !== $user->id && $user->role !== 'manager') {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        $run->load([
-            'area',
-            'template.groups.items',
-            'template.columns',
-            'entries',
-            'signoffs.user',
-            'assignedUser',
-            'verifiedUser'
-        ]);
-
-        return response()->json($run);
+        $run = $this->runService->getRunDetail($run);
+        return $this->successResponse($run, 'Lấy chi tiết checklist thành công');
     }
 
     /**
-     * Bắt đầu làm checklist (chuyển status từ pending → in_progress)
+     * Bắt đầu làm checklist
      */
     public function startWork(Run $run, Request $request): JsonResponse
     {
-        $user = $request->user();
-        
-        // Verify executor
-        if ($run->assigned_to !== $user->id) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+        try {
+            $run = $this->runService->startWork($run, $request->user());
+            return $this->successResponse($run, '✅ Bắt đầu làm checklist');
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
-
-        if ($run->work_status !== 'pending') {
-            return response()->json(['error' => 'Checklist không ở trạng thái pending'], 400);
-        }
-
-        $run->update([
-            'work_status' => 'in_progress',
-            'started_at' => now()
-        ]);
-
-        return response()->json(['message' => '✅ Bắt đầu làm checklist', 'run' => $run]);
     }
 
     /**
-     * Hoàn thành checklist (chuyển status từ in_progress → completed)
+     * Hoàn thành checklist
      */
     public function completeWork(Run $run, Request $request): JsonResponse
     {
-        $user = $request->user();
-        
-        if ($run->assigned_to !== $user->id) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+        try {
+            $run = $this->runService->completeWork($run, $request->user());
+            return $this->successResponse($run, '✅ Đã hoàn thành checklist');
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
-
-        if ($run->work_status !== 'in_progress') {
-            return response()->json(['error' => 'Checklist phải ở trạng thái in_progress'], 400);
-        }
-
-        $run->update([
-            'work_status' => 'completed',
-            'completed_at' => now()
-        ]);
-
-        return response()->json(['message' => '✅ Đã hoàn thành checklist', 'run' => $run]);
     }
 
     /**
-     * Yêu cầu duyệt (chuyển status từ completed → needs_review)
+     * Yêu cầu duyệt
      */
     public function requestReview(Run $run, Request $request): JsonResponse
     {
-        $user = $request->user();
-        
-        if ($run->assigned_to !== $user->id) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+        try {
+            $run = $this->runService->requestReview($run, $request->user());
+            return $this->successResponse($run, '✅ Đã yêu cầu duyệt');
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
-
-        if ($run->work_status !== 'completed') {
-            return response()->json(['error' => 'Chỉ có thể yêu cầu duyệt khi completed'], 400);
-        }
-
-        $run->update([
-            'work_status' => 'needs_review',
-            'review_requested_at' => now()
-        ]);
-
-        return response()->json(['message' => '✅ Đã yêu cầu duyệt', 'run' => $run]);
     }
 
     /**
@@ -139,41 +102,16 @@ class ReviewController extends Controller
      */
     public function approve(Run $run, Request $request): JsonResponse
     {
-        $user = $request->user();
-        
-        if ($run->verified_by !== $user->id && $user->role !== 'manager') {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-
-        if ($run->work_status !== 'needs_review') {
-            return response()->json(['error' => 'Checklist phải ở trạng thái needs_review'], 400);
-        }
-
         $validated = $request->validate([
             'review_note' => 'nullable|string|max:500'
         ]);
 
-        DB::transaction(function () use ($run, $user, $validated) {
-            // Update run status
-            $run->update([
-                'work_status' => 'approved',
-                'verified_by' => $user->id
-            ]);
-
-            // Create signoff record
-            Signoff::create([
-                'run_id' => $run->id,
-                'role' => 'supervisor',
-                'user_id' => $user->id,
-                'review_status' => 'approved',
-                'review_note' => $validated['review_note'] ?? '✅ Đã xác nhận',
-                'reviewed_at' => now(),
-                'signed_at' => now(),
-                'note' => $validated['review_note'] ?? 'Đã duyệt và xác nhận'
-            ]);
-        });
-
-        return response()->json(['message' => '✅ Đã phê duyệt checklist', 'run' => $run]);
+        try {
+            $run = $this->runService->approveRun($run, $request->user(), $validated['review_note'] ?? null);
+            return $this->successResponse($run, '✅ Đã phê duyệt checklist');
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
     }
 
     /**
@@ -181,63 +119,29 @@ class ReviewController extends Controller
      */
     public function reject(Run $run, Request $request): JsonResponse
     {
-        $user = $request->user();
-        
-        if ($run->verified_by !== $user->id && $user->role !== 'manager') {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-
-        if ($run->work_status !== 'needs_review') {
-            return response()->json(['error' => 'Checklist phải ở trạng thái needs_review'], 400);
-        }
-
         $validated = $request->validate([
             'review_note' => 'required|string|max:1000'
         ]);
 
-        DB::transaction(function () use ($run, $user, $validated) {
-            // Update run status
-            $run->update([
-                'work_status' => 'rejected'
-            ]);
-
-            // Create signoff record
-            Signoff::create([
-                'run_id' => $run->id,
-                'role' => 'supervisor',
-                'user_id' => $user->id,
-                'review_status' => 'rejected',
-                'review_note' => $validated['review_note'],
-                'reviewed_at' => now(),
-                'signed_at' => now(),
-                'note' => "❌ Từ chối: " . $validated['review_note']
-            ]);
-        });
-
-        return response()->json(['message' => '❌ Đã từ chối checklist', 'run' => $run]);
+        try {
+            $run = $this->runService->rejectRun($run, $request->user(), $validated['review_note']);
+            return $this->successResponse($run, '❌ Đã từ chối checklist');
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
     }
 
     /**
-     * Gửi lại (Re-submit) - từ rejected → needs_review
+     * Gửi lại (Re-submit)
      */
     public function resubmit(Run $run, Request $request): JsonResponse
     {
-        $user = $request->user();
-        
-        if ($run->assigned_to !== $user->id) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+        try {
+            $run = $this->runService->resubmitRun($run, $request->user());
+            return $this->successResponse($run, '✅ Đã gửi lại để duyệt');
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
-
-        if ($run->work_status !== 'rejected') {
-            return response()->json(['error' => 'Chỉ có thể gửi lại khi bị rejected'], 400);
-        }
-
-        $run->update([
-            'work_status' => 'needs_review',
-            'review_requested_at' => now()
-        ]);
-
-        return response()->json(['message' => '✅ Đã gửi lại để duyệt', 'run' => $run]);
     }
 
     /**
@@ -245,15 +149,7 @@ class ReviewController extends Controller
      */
     public function getStatusStats(Request $request): JsonResponse
     {
-        $stats = [
-            'pending' => Run::where('work_status', 'pending')->count(),
-            'in_progress' => Run::where('work_status', 'in_progress')->count(),
-            'completed' => Run::where('work_status', 'completed')->count(),
-            'needs_review' => Run::where('work_status', 'needs_review')->count(),
-            'approved' => Run::where('work_status', 'approved')->count(),
-            'rejected' => Run::where('work_status', 'rejected')->count(),
-        ];
-
-        return response()->json($stats);
+        $stats = $this->runService->getStatusStats();
+        return $this->successResponse($stats, 'Lấy thống kê thành công');
     }
 }

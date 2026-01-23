@@ -11,15 +11,17 @@ class Group extends Model
 {
     use HasFactory;
 
+    protected $table = 'template_groups';
+
     protected $fillable = [
-        'checklist_template_id',
+        'template_id',
         'title',
         'sort_order',
     ];
 
     public function template(): BelongsTo
     {
-        return $this->belongsTo(ChecklistTemplate::class, 'checklist_template_id');
+        return $this->belongsTo(ChecklistTemplate::class, 'template_id');
     }
 
     public function items(): HasMany

@@ -12,7 +12,13 @@ export interface RunDetail {
     completed_at?: string;
     verified_at?: string;
   };
-  template: { id: number; name: string; area_id: number; columns?: Array<{ id: number; role_id?: number; role_name?: string; session_id?: number; time_hhmm?: string }> };
+  template: {
+    id: number;
+    name: string;
+    area_id: number;
+    columns?: Array<{ id: number; role_id?: number; role_name?: string; session_id?: number; time_hhmm?: string }>;
+    groups?: Array<{ id: number; title: string; items?: any[] }>;
+  };
   sessions: Array<{ id: number; time_hhmm: string }>;
   roles: Array<{ id: number; name: string }>;
   columns: Array<{
@@ -77,5 +83,27 @@ export const runService = {
 
   async delete(runId: number): Promise<void> {
     await apiDelete<void>(`/runs/${runId}`);
+  },
+
+  async export(runId: number): Promise<void> {
+    const token = localStorage.getItem('api_token');
+    const response = await fetch(`http://127.0.0.1:8000/api/runs/${runId}/export`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) throw new Error('Export failed');
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Checklist_Run_${runId}.xlsx`; // Or extract filename from header
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   }
 };

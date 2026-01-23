@@ -3,11 +3,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Checklist, ChecklistItem, ChecklistStatus, User } from '../types';
 import { entryService } from '../services/entryService';
 import { runService } from '../services/runService';
-import { signoffService } from '../services/signoffService';
 import { reviewService } from '../services/reviewService';
 import { sanitizeInput } from '../services/validation';
 import { useDebounce } from '../hooks/useDebounce';
-import { ArrowLeft, Check, X, AlertTriangle, Info, ShieldCheck, UserCheck, ChevronRight, Plus, Loader } from 'lucide-react';
+import { ArrowLeft, Check, X, AlertTriangle, Info, ShieldCheck, UserCheck, ChevronRight, Plus, Loader, Download } from 'lucide-react';
 
 interface ChecklistExecutionProps {
   checklist: Checklist;
@@ -24,7 +23,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  
+
   // Incident Reporting States
   const [reportingIncidentId, setReportingIncidentId] = useState<string | null>(null);
   const [incidentDesc, setIncidentDesc] = useState('');
@@ -36,11 +35,21 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
   const isExecutor = String(checklist.assignedTo) === String(currentUser.id);
   const isVerifier = String(checklist.verifiedBy) === String(currentUser.id);
-  
+
   // Logic: Nhân viên chỉ có thể sửa nếu chưa COMPLETED. Verifier không thể sửa items, chỉ có thể Confirm.
-  const isReadOnly = checklist.status === ChecklistStatus.REVIEWED || 
-                     (isVerifier && checklist.status === ChecklistStatus.COMPLETED) ||
-                     (!isExecutor && !isVerifier);
+  const isReadOnly = checklist.status === ChecklistStatus.REVIEWED ||
+    (isVerifier && checklist.status === ChecklistStatus.COMPLETED) ||
+    (!isExecutor && !isVerifier);
+
+  console.log('[ChecklistExecution] Debug:', {
+    checklist_status: checklist.status,
+    checklist_assignedTo: checklist.assignedTo,
+    checklist_verifiedBy: checklist.verifiedBy,
+    currentUser_id: currentUser.id,
+    isExecutor,
+    isVerifier,
+    isReadOnly
+  });
 
   // Load run details and pre-fill existing entries
   useEffect(() => {
@@ -52,15 +61,15 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
       try {
         const runDetail = await runService.get(runContext.runId);
-        
+
         // Pre-fill items with existing entries
         if (runDetail.entries && runDetail.entries.length > 0) {
-          setItems(prevItems => 
+          setItems(prevItems =>
             prevItems.map(item => {
               const entry = runDetail.entries.find(
                 e => Number(e.item_id) === Number(item.id) && Number(e.column_id) === runContext.columnId
               );
-              
+
               if (entry) {
                 return {
                   ...item,
@@ -86,7 +95,15 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
   // Auto-save function with debounce
   const saveEntry = useCallback(async (itemId: string, status: 'PASS' | 'FAIL', note?: string) => {
     if (!runContext) return;
-    
+
+    console.log('[saveEntry] Saving:', {
+      run_id: runContext.runId,
+      item_id: Number(itemId),
+      column_id: runContext.columnId,
+      value: status === 'PASS' ? 'ok' : 'not_ok',
+      note
+    });
+
     setIsSaving(true);
     try {
       await entryService.upsert({
@@ -97,6 +114,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
         note: note
       });
       setLastSaved(new Date());
+      console.log('[saveEntry] Success!');
     } catch (e) {
       console.error('Auto-save failed:', e);
     } finally {
@@ -109,10 +127,10 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
   const handleStatusChange = async (itemId: string, status: 'PASS' | 'FAIL') => {
     if (isReadOnly || checklist.status === ChecklistStatus.COMPLETED) return;
-    
+
     // Update local state immediately for responsive UI
     setItems(prev => prev.map(item => item.id === itemId ? { ...item, status } : item));
-    
+
     if (status === 'PASS') {
       setReportingIncidentId(null);
     }
@@ -138,10 +156,10 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
     try {
       // Step 1: Mark as completed
       await reviewService.completeWork(runContext.runId);
-      
+
       // Step 2: Request review from supervisor
       await reviewService.requestReview(runContext.runId);
-      
+
       onComplete({
         ...checklist,
         status: ChecklistStatus.COMPLETED,
@@ -158,15 +176,15 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
   const handleVerifySubmit = async () => {
     if (!runContext) return;
-    
+
     // Optional: Ask for review note
     const reviewNote = prompt("📝 Ghi chú xác nhận (tùy chọn):");
-    
+
     setIsSubmitting(true);
     try {
       // Use review workflow approve
       await reviewService.approve(runContext.runId, reviewNote || '');
-      
+
       onComplete({
         ...checklist,
         status: ChecklistStatus.REVIEWED,
@@ -182,24 +200,24 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
   const handleRejectSubmit = async () => {
     if (!runContext) return;
-    
+
     const rejectReason = prompt("❌ Lý do từ chối (BẮT BUỘC):\n\nVí dụ: Cần sửa lại hạng mục #5");
-    
+
     if (!rejectReason || rejectReason.trim().length < 5) {
       alert("Vui lòng nhập lý do từ chối (ít nhất 5 ký tự)");
       return;
     }
-    
+
     setIsSubmitting(true);
     try {
       await reviewService.reject(runContext.runId, rejectReason);
-      
+
       onComplete({
         ...checklist,
         status: ChecklistStatus.IN_PROGRESS, // Back to in progress for staff to fix
         items: items
       });
-      
+
       alert(`✅ Đã từ chối và gửi yêu cầu sửa lại cho nhân viên.\n\nLý do: ${rejectReason}`);
       onBack();
     } catch (e) {
@@ -213,15 +231,15 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
   const handleReportIncident = (item: ChecklistItem) => {
     const cleanDesc = sanitizeInput(incidentDesc);
     const finalDesc = cleanDesc || "Sự cố được phát hiện trong quá trình thực hiện checklist.";
-    
+
     if (finalDesc.length < 5) {
       alert("Vui lòng nhập mô tả chi tiết hơn (ít nhất 5 ký tự)");
       return;
     }
-    
+
     // 1. Create Incident Ticket
     onCreateIncident(
-      item.text, 
+      item.text,
       finalDesc,
       checklist.area.name
     );
@@ -237,7 +255,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
   const handleManualReportSubmit = () => {
     const cleanTitle = sanitizeInput(manualIncident.title);
     const cleanDesc = sanitizeInput(manualIncident.desc);
-    
+
     if (!cleanTitle || cleanTitle.length < 3) {
       alert("Vui lòng nhập tiêu đề (ít nhất 3 ký tự)");
       return;
@@ -251,6 +269,19 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
     setManualIncident({ title: '', desc: '' });
   };
 
+  const handleExport = async () => {
+    if (!runContext) return;
+    try {
+      // Use local saving state or a new one
+      setIsLoading(true);
+      await runService.export(runContext.runId);
+    } catch (e) {
+      alert('Không thể xuất file Excel: ' + (e as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const progress = calculateProgress();
   const allAnswered = items.every(i => i.status);
 
@@ -259,7 +290,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
     if (!lastSaved) return null;
     const now = new Date();
     const diffSecs = Math.floor((now.getTime() - lastSaved.getTime()) / 1000);
-    
+
     if (diffSecs < 5) return 'Vừa lưu';
     if (diffSecs < 60) return `Đã lưu ${diffSecs}s trước`;
     const diffMins = Math.floor(diffSecs / 60);
@@ -281,32 +312,38 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
   return (
     <div className="bg-gray-50 min-h-screen pb-28 flex flex-col">
       <div className="bg-white p-5 shadow-sm sticky top-0 z-20 rounded-b-3xl">
-        <div className="flex items-center mb-5">
-          <button onClick={onBack} className="p-2.5 -ml-2 hover:bg-gray-50 rounded-2xl transition-colors"><ArrowLeft size={24} /></button>
-          <div className="ml-3">
-            <h1 className="font-bold text-gray-900 leading-tight text-lg">{checklist.templateName}</h1>
-            <div className="flex items-center gap-2 mt-0.5">
-               <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${
-                 checklist.status === ChecklistStatus.REVIEWED ? 'bg-green-50 text-green-600 border-green-100' : 'bg-brand-50 text-brand-600 border-brand-100'
-               }`}>{checklist.status}</span>
-               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">{checklist.area.name}</p>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center">
+            <button onClick={onBack} className="p-2.5 -ml-2 hover:bg-gray-50 rounded-2xl transition-colors"><ArrowLeft size={24} /></button>
+            <div className="ml-3">
+              <h1 className="font-bold text-gray-900 leading-tight text-lg">{checklist.templateName}</h1>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${checklist.status === ChecklistStatus.REVIEWED ? 'bg-green-50 text-green-600 border-green-100' : 'bg-brand-50 text-brand-600 border-brand-100'
+                  }`}>{checklist.status}</span>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">{checklist.area.name}</p>
+              </div>
             </div>
           </div>
+          {runContext && (
+            <button onClick={handleExport} className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-all" title="Xuất Excel">
+              <Download size={20} />
+            </button>
+          )}
         </div>
 
         {/* User Role Banner */}
         <div className="mb-4">
           {isExecutor ? (
             <div className="bg-brand-50 text-brand-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border border-brand-100">
-               <UserCheck size={16} /> Bạn là NGƯỜI THỰC HIỆN checklist này
+              <UserCheck size={16} /> Bạn là NGƯỜI THỰC HIỆN checklist này
             </div>
           ) : isVerifier ? (
-             <div className="bg-purple-50 text-purple-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border border-purple-100">
-               <ShieldCheck size={16} /> Bạn là NGƯỜI KIỂM DUYỆT (Giám sát)
+            <div className="bg-purple-50 text-purple-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border border-purple-100">
+              <ShieldCheck size={16} /> Bạn là NGƯỜI KIỂM DUYỆT (Giám sát)
             </div>
           ) : (
             <div className="bg-gray-50 text-gray-500 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border border-gray-200">
-               <Info size={16} /> Bạn đang xem với quyền: {currentUser.role}
+              <Info size={16} /> Bạn đang xem với quyền: {currentUser.role}
             </div>
           )}
         </div>
@@ -347,7 +384,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
               <p className="text-gray-800 font-bold text-sm pt-0.5">{item.text}</p>
               {item.isCritical && <AlertTriangle size={14} className="text-red-500 shrink-0 mt-1" />}
             </div>
-            
+
             <div className="grid grid-cols-2 gap-3">
               <button
                 disabled={isReadOnly || checklist.status === ChecklistStatus.COMPLETED}
@@ -371,7 +408,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
                 {reportedItems.has(item.id) || item.note ? (
                   <div className="flex flex-col items-center justify-center gap-1 text-red-500 bg-red-50 py-3 rounded-xl border border-red-100">
                     <div className="flex items-center gap-2 text-[10px] font-bold">
-                       <Check size={14} /> ĐÃ BÁO CÁO SỰ CỐ
+                      <Check size={14} /> ĐÃ BÁO CÁO SỰ CỐ
                     </div>
                     {item.note && <p className="text-[10px] italic px-2 text-center text-red-400">&quot;{item.note}&quot;</p>}
                   </div>
@@ -387,13 +424,13 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
                           onChange={(e) => setIncidentDesc(e.target.value)}
                         />
                         <div className="flex gap-2">
-                          <button 
+                          <button
                             onClick={() => { setReportingIncidentId(null); setIncidentDesc(''); }}
                             className="flex-1 py-2.5 text-[10px] font-bold text-gray-400 hover:bg-gray-50 rounded-xl"
                           >
                             HỦY
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleReportIncident(item)}
                             className="flex-[2] py-2.5 bg-red-600 text-white rounded-xl text-[10px] font-black shadow-lg shadow-red-100"
                           >
@@ -402,7 +439,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
                         </div>
                       </div>
                     ) : (
-                      <button 
+                      <button
                         onClick={() => setReportingIncidentId(item.id)}
                         className="w-full py-3 bg-white text-red-600 rounded-2xl text-[10px] font-black flex items-center justify-center gap-2 border-2 border-red-100 hover:bg-red-50 transition-colors active:scale-95"
                       >
@@ -420,45 +457,45 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
         {isExecutor && checklist.status !== ChecklistStatus.COMPLETED && checklist.status !== ChecklistStatus.REVIEWED && (
           <div className="mt-6 mb-2">
             {!isReportingManual ? (
-               <button 
-                 onClick={() => setIsReportingManual(true)}
-                 className="w-full py-3 border-2 border-dashed border-red-200 text-red-400 rounded-3xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-50 hover:text-red-500 hover:border-red-300 transition-all"
-               >
-                 <Plus size={16} /> BÁO CÁO SỰ CỐ PHÁT SINH
-               </button>
+              <button
+                onClick={() => setIsReportingManual(true)}
+                className="w-full py-3 border-2 border-dashed border-red-200 text-red-400 rounded-3xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-red-50 hover:text-red-500 hover:border-red-300 transition-all"
+              >
+                <Plus size={16} /> BÁO CÁO SỰ CỐ PHÁT SINH
+              </button>
             ) : (
-               <div className="bg-red-50 p-5 rounded-3xl border border-red-100 animate-in slide-in-from-bottom-2 shadow-sm">
-                 <h3 className="text-xs font-bold text-red-700 uppercase mb-3 flex items-center gap-2">
-                   <AlertTriangle size={14}/> Báo cáo sự cố phát sinh
-                 </h3>
-                 <input 
-                   type="text" 
-                   placeholder="Tiêu đề sự cố (VD: Hỏng khóa cửa chính)"
-                   className="w-full p-3 mb-3 bg-white border border-red-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-red-100"
-                   value={manualIncident.title}
-                   onChange={e => setManualIncident({...manualIncident, title: e.target.value})}
-                 />
-                 <textarea
-                   placeholder="Mô tả chi tiết..."
-                   className="w-full p-3 mb-3 bg-white border border-red-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-red-100 min-h-[80px]"
-                   value={manualIncident.desc}
-                   onChange={e => setManualIncident({...manualIncident, desc: e.target.value})}
-                 />
-                 <div className="flex gap-3">
-                   <button 
-                     onClick={() => setIsReportingManual(false)}
-                     className="flex-1 py-3 text-[10px] font-bold text-gray-500 bg-white border border-gray-200 rounded-xl hover:bg-gray-50"
-                   >
-                     HỦY BỎ
-                   </button>
-                   <button 
-                     onClick={handleManualReportSubmit}
-                     className="flex-[2] py-3 text-[10px] font-bold text-white bg-red-600 rounded-xl shadow-lg shadow-red-200 hover:bg-red-700"
-                   >
-                     GỬI BÁO CÁO
-                   </button>
-                 </div>
-               </div>
+              <div className="bg-red-50 p-5 rounded-3xl border border-red-100 animate-in slide-in-from-bottom-2 shadow-sm">
+                <h3 className="text-xs font-bold text-red-700 uppercase mb-3 flex items-center gap-2">
+                  <AlertTriangle size={14} /> Báo cáo sự cố phát sinh
+                </h3>
+                <input
+                  type="text"
+                  placeholder="Tiêu đề sự cố (VD: Hỏng khóa cửa chính)"
+                  className="w-full p-3 mb-3 bg-white border border-red-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-red-100"
+                  value={manualIncident.title}
+                  onChange={e => setManualIncident({ ...manualIncident, title: e.target.value })}
+                />
+                <textarea
+                  placeholder="Mô tả chi tiết..."
+                  className="w-full p-3 mb-3 bg-white border border-red-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-red-100 min-h-[80px]"
+                  value={manualIncident.desc}
+                  onChange={e => setManualIncident({ ...manualIncident, desc: e.target.value })}
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setIsReportingManual(false)}
+                    className="flex-1 py-3 text-[10px] font-bold text-gray-500 bg-white border border-gray-200 rounded-xl hover:bg-gray-50"
+                  >
+                    HỦY BỎ
+                  </button>
+                  <button
+                    onClick={handleManualReportSubmit}
+                    className="flex-[2] py-3 text-[10px] font-bold text-white bg-red-600 rounded-xl shadow-lg shadow-red-200 hover:bg-red-700"
+                  >
+                    GỬI BÁO CÁO
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -499,10 +536,10 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
         {/* Trạng thái đã đóng */}
         {checklist.status === ChecklistStatus.REVIEWED && (
-           <div className="bg-green-50 p-4 rounded-2xl border border-green-100 text-center flex items-center justify-center gap-2">
-              <Check className="text-green-600" size={20} />
-              <span className="text-sm font-black text-green-700 uppercase">Dữ liệu đã được chốt và lưu trữ</span>
-           </div>
+          <div className="bg-green-50 p-4 rounded-2xl border border-green-100 text-center flex items-center justify-center gap-2">
+            <Check className="text-green-600" size={20} />
+            <span className="text-sm font-black text-green-700 uppercase">Dữ liệu đã được chốt và lưu trữ</span>
+          </div>
         )}
       </div>
     </div>

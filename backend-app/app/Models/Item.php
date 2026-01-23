@@ -11,10 +11,11 @@ class Item extends Model
 {
     use HasFactory;
 
+    protected $table = 'template_items';
+
     protected $fillable = [
         'group_id',
-        'title',
-        'instructions',
+        'content',
         'sort_order',
     ];
 
@@ -26,5 +27,10 @@ class Item extends Model
     public function entries(): HasMany
     {
         return $this->hasMany(Entry::class);
+    }
+
+    public function getTitleAttribute(): string
+    {
+        return $this->content;
     }
 }

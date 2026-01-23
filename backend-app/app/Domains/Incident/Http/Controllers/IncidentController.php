@@ -32,6 +32,12 @@ class IncidentController
         return response()->json($incidents);
     }
 
+    public function show(int $id)
+    {
+        $incident = Incident::with(['area', 'run', 'assignedTo'])->findOrFail($id);
+        return response()->json($incident);
+    }
+
     public function store(CreateIncidentRequest $request)
     {
         $incident = Incident::create($request->validated());
@@ -43,5 +49,12 @@ class IncidentController
         $incident = Incident::findOrFail($id);
         $incident->update($request->validated());
         return response()->json($incident->load(['area', 'run', 'assignedTo']));
+    }
+
+    public function destroy(int $id)
+    {
+        $incident = Incident::findOrFail($id);
+        $incident->delete();
+        return response()->json(null, 204);
     }
 }

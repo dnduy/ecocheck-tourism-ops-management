@@ -47,4 +47,15 @@ class ChecklistRunController
         $run = $this->checklistService->updateRun($id, $request->validated());
         return response()->json($run);
     }
+
+    public function destroy(int $id)
+    {
+        $deleted = $this->checklistService->deleteRun($id);
+        
+        if (!$deleted) {
+            return response()->json(['message' => 'Run not found'], 404);
+        }
+        
+        return response()->json(null, 204);
+    }
 }

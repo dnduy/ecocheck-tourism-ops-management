@@ -14,8 +14,8 @@ class UpsertEntryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'run_id' => ['required', 'exists:runs,id'],
-            'item_id' => ['required', 'exists:items,id'],
+            'run_id' => ['required', 'exists:checklist_runs,id'],
+            'item_id' => ['required', 'exists:template_items,id'],
             'column_id' => ['required', 'exists:template_columns,id'],
             'value' => ['required'],
             'note' => ['nullable', 'string'],

@@ -9,16 +9,18 @@ use Illuminate\Http\JsonResponse;
 
 class SignoffController extends Controller
 {
+    use \App\Traits\ApiResponse;
+
+    protected $signoffService;
+
+    public function __construct(\App\Interfaces\SignoffServiceInterface $signoffService)
+    {
+        $this->signoffService = $signoffService;
+    }
+
     public function store(CreateSignoffRequest $request): JsonResponse
     {
-        $signoff = Signoff::create([
-            'run_id' => $request->run_id,
-            'role' => $request->role,
-            'user_id' => $request->user()->id,
-            'note' => $request->note,
-            'signed_at' => now(),
-        ]);
-
-        return response()->json($signoff, 201);
+        $signoff = $this->signoffService->createSignoff($request->validated(), $request->user());
+        return $this->successResponse($signoff, 'Ký duyệt thành công', 201);
     }
 }

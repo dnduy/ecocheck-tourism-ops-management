@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, WorkStatus } from '../types';
+import { User } from '../types';
 import { reviewService, ReviewStats } from '../services/reviewService';
-import { CheckCircle2, XCircle, Clock, AlertCircle, Eye, Send, RotateCcw } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Eye } from 'lucide-react';
 
 interface ReviewDashboardProps {
   currentUser: User;
@@ -10,7 +10,6 @@ interface ReviewDashboardProps {
 export const ReviewDashboard: React.FC<ReviewDashboardProps> = ({ currentUser }) => {
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'needs_review' | 'approved' | 'rejected'>('needs_review');
   const [pendingReviews, setPendingReviews] = useState<any[]>([]);
 
   useEffect(() => {

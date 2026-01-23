@@ -10,6 +10,8 @@ class Signoff extends Model
 {
     use HasFactory;
 
+    protected $table = 'run_signoffs';
+
     protected $fillable = [
         'run_id',
         'role',

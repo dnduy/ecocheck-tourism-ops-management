@@ -10,28 +10,20 @@ use Illuminate\Support\Facades\DB;
 
 class EntryController extends Controller
 {
+    use \App\Traits\ApiResponse;
+
+    protected $entryService;
+
+    public function __construct(\App\Interfaces\EntryServiceInterface $entryService)
+    {
+        $this->entryService = $entryService;
+    }
+
     public function upsert(UpsertEntryRequest $request): JsonResponse
     {
-        $data = $request->validated();
+        // Validation handled by FormRequest
+        $entry = $this->entryService->upsertEntry($request->validated());
 
-        $entry = DB::transaction(function () use ($data, $request) {
-            $entry = Entry::updateOrCreate(
-                [
-                    'run_id' => $data['run_id'],
-                    'item_id' => $data['item_id'],
-                    'column_id' => $data['column_id'],
-                ],
-                [
-                    'value' => $data['value'],
-                    'note' => $data['note'] ?? null,
-                    'updated_by' => $request->user()->id,
-                    'created_by' => $request->user()->id,
-                ]
-            );
-
-            return $entry;
-        });
-
-        return response()->json($entry);
+        return $this->successResponse($entry, 'Cập nhật mục kiểm tra thành công');
     }
 }

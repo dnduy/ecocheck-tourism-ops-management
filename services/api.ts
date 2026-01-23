@@ -60,11 +60,16 @@ export const apiCall = async <T = any>(
       signal: controller.signal
     });
 
-    // Handle 401 - clear token and redirect
+    // Handle 401 - dispatch event and clear token
     if (response.status === 401) {
       localStorage.removeItem('api_token');
       localStorage.removeItem('current_user');
-      window.location.href = '/login';
+      
+      // Dispatch custom event instead of hard redirect
+      window.dispatchEvent(new CustomEvent('tokenExpired', {
+        detail: { message: 'Phiên đăng nhập hết hạn' }
+      }));
+      
       throw new ApiError('Phiên đăng nhập hết hạn, vui lòng đăng nhập lại.', 401);
     }
 

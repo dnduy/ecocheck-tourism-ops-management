@@ -4,19 +4,22 @@ import { Checklist, User } from '../types';
 
 export const exportChecklistsToExcel = (checklists: Checklist[], users: User[]) => {
   // 1. Prepare Helper to find User Name by ID
-  const getUserName = (id: string) => {
-    const user = users.find(u => u.id === id);
-    return user ? user.name : id;
+  const getUserName = (id: string | number) => {
+    const user = users.find(u => String(u.id) === String(id));
+    return user ? user.name : String(id);
   };
 
   // 2. Flatten Data: Create a row for every Checklist Item
   // This allows pivot tables and detailed analysis in Excel
   const flattenedData = checklists.flatMap(cl => {
+    // Skip checklists without items
+    if (!cl.items || cl.items.length === 0) return [];
+    
     return cl.items.map(item => ({
       'Mã Phiếu': cl.id,
       'Tên Mẫu': cl.templateName,
-      'Khu Vực': cl.area.name,
-      'Loại Khu Vực': cl.area.type,
+      'Khu Vực': cl.area?.name || '',
+      'Loại Khu Vực': cl.area?.type || '',
       'Ngày': cl.date,
       'Ca Trực': cl.shift,
       'Trạng Thái Phiếu': cl.status,
@@ -25,15 +28,23 @@ export const exportChecklistsToExcel = (checklists: Checklist[], users: User[]) 
       'Thời Gian Hoàn Thành': cl.completedAt ? new Date(cl.completedAt).toLocaleString('vi-VN') : '',
       
       // Item Details
-      'Tên Hạng Mục': item.text,
+      'Tên Hạng Mục': item.text || '',
       'Quan Trọng': item.isCritical ? 'Có' : 'Không',
       'Kết Quả': item.status === 'PASS' ? 'ĐẠT' : (item.status === 'FAIL' ? 'KHÔNG ĐẠT' : 'Chưa làm'),
       'Ghi Chú/Sự Cố': item.note || ''
     }));
   });
 
+  // Filter out empty rows
+  const validData = flattenedData.filter(row => row['Mã Phiếu'] && row['Tên Hạng Mục']);
+
+  if (validData.length === 0) {
+    alert('Không có dữ liệu checklist để xuất');
+    return;
+  }
+
   // 3. Create Worksheet
-  const worksheet = XLSX.utils.json_to_sheet(flattenedData);
+  const worksheet = XLSX.utils.json_to_sheet(validData);
 
   // 4. Auto-width columns (Simple heuristic)
   const wscols = [

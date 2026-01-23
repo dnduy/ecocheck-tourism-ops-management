@@ -11,6 +11,8 @@ class ChecklistTemplate extends Model
 {
     use HasFactory;
 
+    protected $table = 'checklist_templates';
+
     protected $fillable = [
         'name',
         'description',
@@ -24,12 +26,12 @@ class ChecklistTemplate extends Model
 
     public function groups(): HasMany
     {
-        return $this->hasMany(Group::class, 'checklist_template_id');
+        return $this->hasMany(Group::class, 'template_id');
     }
 
     public function columns(): HasMany
     {
-        return $this->hasMany(TemplateColumn::class);
+        return $this->hasMany(TemplateColumn::class, 'template_id');
     }
 
     public function roles(): BelongsToMany

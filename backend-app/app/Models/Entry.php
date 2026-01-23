@@ -10,6 +10,8 @@ class Entry extends Model
 {
     use HasFactory;
 
+    protected $table = 'checklist_entries';
+
     protected $fillable = [
         'run_id',
         'item_id',
@@ -22,12 +24,12 @@ class Entry extends Model
 
     public function run(): BelongsTo
     {
-        return $this->belongsTo(Run::class);
+        return $this->belongsTo(Run::class, 'run_id');
     }
 
     public function item(): BelongsTo
     {
-        return $this->belongsTo(Item::class);
+        return $this->belongsTo(Item::class, 'item_id');
     }
 
     public function column(): BelongsTo

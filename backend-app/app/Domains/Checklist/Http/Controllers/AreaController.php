@@ -15,6 +15,12 @@ class AreaController
         return response()->json($areas);
     }
 
+    public function show(int $id)
+    {
+        $area = Area::findOrFail($id);
+        return response()->json($area);
+    }
+
     public function store(CreateAreaRequest $request)
     {
         $area = Area::create($request->validated());

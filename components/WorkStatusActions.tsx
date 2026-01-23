@@ -19,7 +19,6 @@ interface WorkStatusActionsProps {
 export const WorkStatusActions: React.FC<WorkStatusActionsProps> = ({
   runId,
   workStatus,
-  currentUserRole,
   isAssignee,
   isReviewer,
   onStatusChange
