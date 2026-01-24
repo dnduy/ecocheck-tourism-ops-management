@@ -4,7 +4,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Run;
+use App\Domains\Checklist\Models\ChecklistRun as Run;
 use App\Interfaces\RunServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

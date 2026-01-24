@@ -1,0 +1,14 @@
+{
+    "name": "ecocheck-smoke-tests",
+    "version": "1.0.0",
+    "description": "Automated smoke tests for EcoCheck API",
+    "main": "smoke.test.js",
+    "scripts": {
+        "test": "node smoke.test.js"
+    },
+    "dependencies": {
+        "axios": "^1.6.0",
+        "dotenv": "^16.3.0"
+    },
+    "private": true
+}

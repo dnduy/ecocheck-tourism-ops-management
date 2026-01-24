@@ -11,13 +11,15 @@ class ChecklistRunController
 {
     public function __construct(
         private ChecklistService $checklistService
-    ) {}
+    ) {
+    }
 
     public function store(CreateRunRequest $request)
     {
         $run = $this->checklistService->createOrGetRun(
             $request->input('area_id'),
-            $request->input('date')
+            $request->input('date'),
+            $request->input('assigned_to')
         );
 
         return response()->json($run, 201);
@@ -51,11 +53,11 @@ class ChecklistRunController
     public function destroy(int $id)
     {
         $deleted = $this->checklistService->deleteRun($id);
-        
+
         if (!$deleted) {
             return response()->json(['message' => 'Run not found'], 404);
         }
-        
+
         return response()->json(null, 204);
     }
 }

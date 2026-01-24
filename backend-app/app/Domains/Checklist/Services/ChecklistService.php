@@ -13,24 +13,29 @@ class ChecklistService
 {
     public function __construct(
         private ChecklistRunRepository $runRepository
-    ) {}
+    ) {
+    }
 
-    public function createOrGetRun(int $areaId, string $date): ChecklistRun
+    public function createOrGetRun(int $areaId, string $date, ?int $assignedTo = null): ChecklistRun
     {
+        // Note: findByAreaAndDate might return existing run which might have DIFFERENT assignee. 
+        // We generally return it as is.
         $run = $this->runRepository->findByAreaAndDate($areaId, $date);
-        
+
         if ($run) {
             return $run;
         }
-        
+
         $area = Area::findOrFail($areaId);
         $template = $area->templates()->where('is_active', true)->firstOrFail();
-        
+
         return $this->runRepository->create([
             'template_id' => $template->id,
             'area_id' => $areaId,
             'run_date' => $date,
             'status' => 'open',
+            'assigned_to' => $assignedTo,
+            'created_by' => auth()->id(), // Also set created_by
         ]);
     }
 
@@ -42,13 +47,13 @@ class ChecklistService
     public function getRunDetail(int $runId): array
     {
         $run = $this->runRepository->getRunWithFullData($runId);
-        
+
         if (!$run) {
             return [];
         }
 
         $template = $run->template;
-        
+
         // Build column data with session and role info
         $columns = $template->columns->map(function ($column) {
             return [
@@ -113,7 +118,7 @@ class ChecklistService
             'run_id' => $data['run_id'],
             'session_id' => $data['session_id'],
         ];
-        
+
         if (!empty($data['role_id'])) {
             $conditions['role_id'] = $data['role_id'];
         }
@@ -130,17 +135,19 @@ class ChecklistService
 
     public function deleteRun(int $runId): bool
     {
-        $run = ChecklistRun::find($runId);
-        
-        if (!$run) {
-            return false;
-        }
-        
-        // Delete related entries and signoffs (cascade)
-        $run->entries()->delete();
-        $run->signoffs()->delete();
-        $run->delete();
-        
-        return true;
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($runId) {
+            $run = ChecklistRun::find($runId);
+
+            if (!$run) {
+                return false;
+            }
+
+            // Delete related entries and signoffs (cascade)
+            $run->entries()->delete();
+            $run->signoffs()->delete();
+            $run->delete();
+
+            return true;
+        });
     }
 }

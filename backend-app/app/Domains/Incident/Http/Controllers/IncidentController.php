@@ -53,8 +53,11 @@ class IncidentController
 
     public function destroy(int $id)
     {
-        $incident = Incident::findOrFail($id);
-        $incident->delete();
-        return response()->json(null, 204);
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($id) {
+            $incident = Incident::findOrFail($id);
+            // Optionally delete photos or related logs here
+            $incident->delete();
+            return response()->json(null, 204);
+        });
     }
 }

@@ -4,7 +4,8 @@ return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
     'allowed_methods' => ['*'],
     // Explicit origins required when supports_credentials=true
-    'allowed_origins' => ['http://localhost:3001', 'http://localhost:3002'],
+    // Explicit origins required when supports_credentials=true
+    'allowed_origins' => explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:3001,http://localhost:3002')),
     'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],

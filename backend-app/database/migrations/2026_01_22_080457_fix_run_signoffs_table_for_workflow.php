@@ -11,15 +11,33 @@ return new class extends Migration {
     public function up(): void
     {
         Schema::table('run_signoffs', function (Blueprint $table) {
-            $table->unsignedBigInteger('session_id')->nullable()->change();
-            $table->unsignedBigInteger('role_id')->nullable()->change();
-            $table->unsignedBigInteger('signed_by')->nullable()->change();
+            // Nullable changes (Safe to run multiple times usually, but check existence first)
+            if (Schema::hasColumn('run_signoffs', 'session_id')) {
+                $table->unsignedBigInteger('session_id')->nullable()->change();
+            }
+            if (Schema::hasColumn('run_signoffs', 'role_id')) {
+                $table->unsignedBigInteger('role_id')->nullable()->change();
+            }
+            if (Schema::hasColumn('run_signoffs', 'signed_by')) {
+                $table->unsignedBigInteger('signed_by')->nullable()->change();
+            }
 
-            $table->string('role')->after('run_id'); // e.g. 'supervisor'
-            $table->unsignedBigInteger('user_id')->after('role');
-            $table->string('review_status')->nullable()->after('signed_at'); // e.g. 'approved', 'rejected'
-            $table->text('review_note')->nullable()->after('review_status');
-            $table->timestamp('reviewed_at')->nullable()->after('review_note');
+            // New Columns
+            if (!Schema::hasColumn('run_signoffs', 'role')) {
+                $table->string('role')->after('run_id'); // e.g. 'supervisor'
+            }
+            if (!Schema::hasColumn('run_signoffs', 'user_id')) {
+                $table->unsignedBigInteger('user_id')->after('role');
+            }
+            if (!Schema::hasColumn('run_signoffs', 'review_status')) {
+                $table->string('review_status')->nullable()->after('signed_at'); // e.g. 'approved', 'rejected'
+            }
+            if (!Schema::hasColumn('run_signoffs', 'review_note')) {
+                $table->text('review_note')->nullable()->after('review_status');
+            }
+            if (!Schema::hasColumn('run_signoffs', 'reviewed_at')) {
+                $table->timestamp('reviewed_at')->nullable()->after('review_note');
+            }
         });
     }
 

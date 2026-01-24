@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './api';
+import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from './api';
 
 export interface RunDetail {
   run: {
@@ -77,8 +77,8 @@ export const runService = {
   },
 
   async update(runId: number, data: { status?: string; assigned_to?: number; verified_by?: number }): Promise<RunDetail> {
-    // Backend expects PUT for RunController@update
-    return apiPut<RunDetail>(`/runs/${runId}`, data);
+    // Backend expects PATCH for RunController@update
+    return apiPatch<RunDetail>(`/runs/${runId}`, data);
   },
 
   async delete(runId: number): Promise<void> {
@@ -87,7 +87,8 @@ export const runService = {
 
   async export(runId: number): Promise<void> {
     const token = localStorage.getItem('api_token');
-    const response = await fetch(`http://127.0.0.1:8000/api/runs/${runId}/export`, {
+    const baseUrl = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000/api';
+    const response = await fetch(`${baseUrl}/runs/${runId}/export`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,

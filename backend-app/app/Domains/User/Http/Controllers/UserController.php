@@ -77,7 +77,7 @@ class UserController
     public function destroy(int $id)
     {
         $user = User::findOrFail($id);
-        
+
         // Prevent deleting yourself
         if (auth()->id() === $user->id) {
             return response()->json([
@@ -85,9 +85,14 @@ class UserController
             ], 403);
         }
 
-        $user->delete();
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($user) {
+            // Note: In strict mode, we might want to fail if user has dependencies.
+            // As this is a P0 fix, we stick to standard delete but transactionally safe.
+            // Future work: detach/nullify relationships if ON DELETE CASCADE is missing.
 
-        return response()->json(null, 204);
+            $user->delete();
+            return response()->json(null, 204);
+        });
     }
 }
 

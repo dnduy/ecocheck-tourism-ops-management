@@ -11,7 +11,12 @@ class RunSignoff extends Model
     protected $fillable = [
         'run_id',
         'session_id',
+        'user_id',
         'role_id',
+        'role',
+        'review_status',
+        'review_note',
+        'reviewed_at',
         'signed_by',
         'signed_at',
         'note',

@@ -11,16 +11,27 @@ return new class extends Migration {
     public function up(): void
     {
         Schema::table('checklist_runs', function (Blueprint $table) {
-            $table->string('work_status')->default('pending')->after('status');
-            $table->timestamp('started_at')->nullable()->after('run_date');
-            $table->timestamp('completed_at')->nullable()->after('started_at');
-            $table->timestamp('review_requested_at')->nullable()->after('completed_at');
-            $table->text('source_template_note')->nullable()->after('review_requested_at');
-            $table->unsignedBigInteger('created_by')->nullable()->after('source_template_note');
-            $table->unsignedBigInteger('updated_by')->nullable()->after('created_by');
-
-            // Fix existing columns if needed (optional, assuming they exist from previous check)
-            // $table->renameColumn('checklist_template_id', 'template_id'); // If mapping was wrong
+            if (!Schema::hasColumn('checklist_runs', 'work_status')) {
+                $table->string('work_status')->default('pending')->after('status');
+            }
+            if (!Schema::hasColumn('checklist_runs', 'started_at')) {
+                $table->timestamp('started_at')->nullable()->after('run_date');
+            }
+            if (!Schema::hasColumn('checklist_runs', 'completed_at')) {
+                $table->timestamp('completed_at')->nullable()->after('started_at');
+            }
+            if (!Schema::hasColumn('checklist_runs', 'review_requested_at')) {
+                $table->timestamp('review_requested_at')->nullable()->after('completed_at');
+            }
+            if (!Schema::hasColumn('checklist_runs', 'source_template_note')) {
+                $table->text('source_template_note')->nullable()->after('review_requested_at');
+            }
+            if (!Schema::hasColumn('checklist_runs', 'created_by')) {
+                $table->unsignedBigInteger('created_by')->nullable()->after('source_template_note');
+            }
+            if (!Schema::hasColumn('checklist_runs', 'updated_by')) {
+                $table->unsignedBigInteger('updated_by')->nullable()->after('created_by');
+            }
         });
     }
 

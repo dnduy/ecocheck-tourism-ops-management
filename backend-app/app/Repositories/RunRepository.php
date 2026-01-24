@@ -3,7 +3,7 @@
 namespace App\Repositories;
 
 use App\Interfaces\Repositories\RunRepositoryInterface;
-use App\Models\Run;
+use App\Domains\Checklist\Models\ChecklistRun as Run;
 use Illuminate\Support\Collection;
 
 class RunRepository implements RunRepositoryInterface
@@ -45,7 +45,7 @@ class RunRepository implements RunRepositoryInterface
         return Run::query();
     }
 
-    public function getAll(array $filters = [], ?\App\Models\User $user = null, int $perPage = 50)
+    public function getAll(array $filters = [], ?\App\Domains\User\Models\User $user = null, int $perPage = 50)
     {
         $query = $this->startQuery()->with([
             'area',

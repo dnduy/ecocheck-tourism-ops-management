@@ -16,6 +16,11 @@ class ChecklistRun extends Model
         'status',
         'assigned_to',
         'verified_by',
+        'work_status',
+        'started_at',
+        'completed_at',
+        'review_requested_at',
+        'created_by',
     ];
 
     protected $casts = [

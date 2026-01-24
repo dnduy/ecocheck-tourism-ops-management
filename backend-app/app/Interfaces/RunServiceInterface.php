@@ -2,8 +2,8 @@
 
 namespace App\Interfaces;
 
-use App\Models\Run;
-use App\Models\User;
+use App\Domains\Checklist\Models\ChecklistRun as Run;
+use App\Domains\User\Models\User;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 interface RunServiceInterface

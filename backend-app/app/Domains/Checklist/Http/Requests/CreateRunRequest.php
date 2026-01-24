@@ -16,6 +16,7 @@ class CreateRunRequest extends FormRequest
         return [
             'area_id' => 'required|exists:areas,id',
             'date' => 'required|date',
+            'assigned_to' => 'nullable|exists:users,id',
         ];
     }
 }

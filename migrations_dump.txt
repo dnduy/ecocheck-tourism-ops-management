@@ -1,0 +1,23 @@
+
+  Migration name  Batch / Status  
+  0001_01_01_000001_create_cache_table  [1] Ran  
+  0001_01_01_000002_create_jobs_table  [1] Ran  
+  0001_01_01_000003_create_sessions_table  [1] Ran  
+  2024_01_01_000000_create_users_table  [1] Ran  
+  2024_01_01_000001_create_areas_table  [1] Ran  
+  2024_01_01_000002_create_checklist_templates_table  [1] Ran  
+  2024_01_01_000003_create_template_sessions_table  [1] Ran  
+  2024_01_01_000004_create_template_roles_table  [1] Ran  
+  2024_01_01_000005_create_template_groups_table  [1] Ran  
+  2024_01_01_000006_create_template_items_table  [1] Ran  
+  2024_01_01_000007_create_template_columns_table  [1] Ran  
+  2024_01_01_000008_add_role_to_users_table  [1] Ran  
+  2024_01_01_000009_create_area_user_table  [1] Ran  
+  2024_01_01_000010_create_checklist_runs_table  [1] Ran  
+  2024_01_01_000011_create_checklist_entries_table  [1] Ran  
+  2024_01_01_000012_create_run_signoffs_table  [1] Ran  
+  2024_01_01_000013_create_incidents_table  [1] Ran  
+  2026_01_13_083229_create_personal_access_tokens_table  [2] Ran  
+  2026_01_22_074751_add_workflow_columns_to_checklist_runs_table  [3] Ran  
+  2026_01_22_080457_fix_run_signoffs_table_for_workflow  [4] Ran  
+

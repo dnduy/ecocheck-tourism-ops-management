@@ -5,9 +5,9 @@ namespace App\Services;
 use App\Interfaces\RunServiceInterface;
 use App\Interfaces\Repositories\RunRepositoryInterface;
 use App\Interfaces\Repositories\SignoffRepositoryInterface;
-use App\Models\Run;
-use App\Models\User;
-use App\Models\ChecklistTemplate;
+use App\Domains\Checklist\Models\ChecklistRun as Run;
+use App\Domains\User\Models\User;
+use App\Domains\Checklist\Models\ChecklistTemplate;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
