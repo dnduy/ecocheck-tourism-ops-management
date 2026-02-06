@@ -5,8 +5,6 @@ import { Incident, IncidentPriority } from '../../types';
 import { useNotification } from '../../contexts/NotificationContext';
 
 export const useIncidents = () => {
-    const { addNotification } = useNotification();
-
     const query = useQuery({
         queryKey: ['incidents'],
         queryFn: async () => {
@@ -35,6 +33,7 @@ export const useIncidents = () => {
 
 export const useIncidentMutations = () => {
     const queryClient = useQueryClient();
+    const { addNotification } = useNotification();
     const { addNotification } = useNotification();
 
     const createIncident = useMutation({

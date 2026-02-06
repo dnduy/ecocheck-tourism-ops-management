@@ -17,8 +17,8 @@ import { useTemplates, useTemplateMutations } from './hooks/api/useTemplates';
 import { useShifts } from './hooks/useShifts';
 import { useStaffNotifications } from './hooks/useStaffNotifications';
 
-import { Role, Checklist, IncidentPriority, User } from './types';
-import { Link, Bell, AlertTriangle, X, CheckCircle } from 'lucide-react';
+import { Role, Checklist, User } from './types';
+import { Bell, AlertTriangle, X, CheckCircle } from 'lucide-react';
 import { runService } from './services/runService';
 import { mapRunToChecklist } from './services/mappers';
 import { ChecklistStatus } from './types';
@@ -36,7 +36,7 @@ export default function AppContent() {
   const { notifications, removeNotification, addNotification } = useNotification();
 
   // --- DATA HOOKS (TanStack Query) ---
-  const { data: incidents = [], refetch: refetchIncidents } = useIncidents();
+  const { data: incidents = [] } = useIncidents();
   // Filter runs for staff automatically if needed, simplified here to fetch all (cached)
   // Optimization: pass currentUser to useChecklists to filter at query level if backend supports it
   const { data: checklists = [], refetch: refetchChecklists } = useChecklists(

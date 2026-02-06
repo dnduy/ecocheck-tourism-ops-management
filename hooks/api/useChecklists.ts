@@ -1,7 +1,6 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { runService } from '../../services/runService';
-import { Checklist } from '../../types';
 import { useNotification } from '../../contexts/NotificationContext';
 import { useAreas } from './useAreas';
 import { mapRunToChecklist } from '../../services/mappers';

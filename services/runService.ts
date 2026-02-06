@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from './api';
+import { apiGet, apiPost, apiDelete, apiPatch } from './api';
 import { authStore } from './authStore';
 
 const unwrapResponse = <T = any>(res: any): T => {

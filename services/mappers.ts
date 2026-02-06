@@ -1,5 +1,5 @@
 
-import { User, Checklist, Incident, Area, ChecklistStatus, WorkStatus, IncidentPriority, ChecklistItem } from '../types';
+import { User, Checklist, Area, ChecklistStatus, WorkStatus, ChecklistItem } from '../types';
 
 export const mapApiUser = (u: any): User => ({
     id: u.id,

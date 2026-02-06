@@ -289,7 +289,9 @@ export const useAppInitialization = (user: User | null, isAuthLoading: boolean, 
                 const resp = await runService.list({ status: 'completed' });
                 const runs = (resp as any).data || resp || [];
                 setPendingReviewCount(Array.isArray(runs) ? runs.length : 0);
-            } catch (e) { }
+            } catch (e) {
+                console.warn('Failed to fetch pending reviews:', e);
+            }
         };
         fetchPending();
         const id = setInterval(fetchPending, 30000);
