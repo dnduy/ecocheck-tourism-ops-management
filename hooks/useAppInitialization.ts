@@ -8,6 +8,8 @@ import { incidentService } from '../services/incidentService';
 import { runService } from '../services/runService';
 import { getErrorMessage } from '../services/errorUtils';
 
+const seenStaffSummaries = new Set<string>();
+
 export const useAppInitialization = (user: User | null, isAuthLoading: boolean, addNotification: (t: string, m: string, type: any) => void) => {
     const [users, setUsers] = useState<User[]>([]);
     const [checklists, setChecklists] = useState<Checklist[]>([]);
@@ -75,19 +77,23 @@ export const useAppInitialization = (user: User | null, isAuthLoading: boolean, 
             };
         });
 
-        let mappedStatus = ChecklistStatus.PENDING;
-        if (run.status === 'in_progress') mappedStatus = ChecklistStatus.IN_PROGRESS;
-        else if (run.status === 'completed') mappedStatus = ChecklistStatus.COMPLETED;
-        else if (run.status === 'reviewed') mappedStatus = ChecklistStatus.REVIEWED;
-
         let workStatus = run.work_status as WorkStatus;
         if (!workStatus) {
-            if (run.status === 'pending') workStatus = WorkStatus.PENDING;
-            else if (run.status === 'in_progress') workStatus = WorkStatus.IN_PROGRESS;
-            else if (run.status === 'completed') workStatus = WorkStatus.COMPLETED;
-            else if (run.status === 'reviewed') workStatus = WorkStatus.APPROVED;
+            const rawStatus = String(run.status || '').toLowerCase();
+            if (rawStatus === 'open' || rawStatus === 'pending' || rawStatus === 'draft') workStatus = WorkStatus.PENDING;
+            else if (rawStatus === 'active' || rawStatus === 'in_progress') workStatus = WorkStatus.IN_PROGRESS;
+            else if (rawStatus === 'done' || rawStatus === 'completed') workStatus = WorkStatus.COMPLETED;
+            else if (rawStatus === 'needs_review') workStatus = WorkStatus.NEEDS_REVIEW;
+            else if (rawStatus === 'approved') workStatus = WorkStatus.APPROVED;
+            else if (rawStatus === 'rejected') workStatus = WorkStatus.REJECTED;
+            else if (rawStatus === 'reviewed') workStatus = WorkStatus.APPROVED;
             else workStatus = WorkStatus.PENDING;
         }
+
+        let mappedStatus = ChecklistStatus.PENDING;
+        if (workStatus === WorkStatus.IN_PROGRESS) mappedStatus = ChecklistStatus.IN_PROGRESS;
+        else if (workStatus === WorkStatus.COMPLETED || workStatus === WorkStatus.NEEDS_REVIEW) mappedStatus = ChecklistStatus.COMPLETED;
+        else if (workStatus === WorkStatus.APPROVED || workStatus === WorkStatus.REJECTED) mappedStatus = ChecklistStatus.REVIEWED;
 
         const getIdFromUser = (val: any): string => {
             if (!val) return '';
@@ -101,7 +107,7 @@ export const useAppInitialization = (user: User | null, isAuthLoading: boolean, 
             templateName: template?.name || 'Checklist',
             area,
             shift: 'Ca A',
-            date: run.run_date || new Date().toISOString().split('T')[0],
+            date: run.run_date || run.date || new Date().toISOString().split('T')[0],
             status: mappedStatus,
             workStatus: workStatus,
             items: mappedItems,
@@ -218,7 +224,7 @@ export const useAppInitialization = (user: User | null, isAuthLoading: boolean, 
             if (!user || user.role !== Role.STAFF) return;
             const todayStr = new Date().toISOString().split('T')[0];
             const storageKey = `daily_summary_${user.id}_${todayStr}`;
-            if (localStorage.getItem(storageKey)) return;
+            if (seenStaffSummaries.has(storageKey)) return;
 
             const [todayResp, recentResp, tomorrowResp] = await Promise.all([
                 runService.list({ date: todayStr, assigned_to: Number(user.id) }),
@@ -245,7 +251,7 @@ export const useAppInitialization = (user: User | null, isAuthLoading: boolean, 
             if (tomorrowRuns.length > 0) {
                 addNotification('Chuẩn bị cho ngày mai', `Dự kiến có ${tomorrowRuns.length} checklist`, 'NORMAL');
             }
-            localStorage.setItem(storageKey, '1');
+            seenStaffSummaries.add(storageKey);
         } catch (e) {
             console.warn('Staff summary notification failed:', e);
         }
@@ -273,7 +279,7 @@ export const useAppInitialization = (user: User | null, isAuthLoading: boolean, 
 
     // Polling for supervisor reviews
     useEffect(() => {
-        const isSupervisor = user && (user.role === Role.SUPERVISOR || user.role === Role.MANAGER);
+        const isSupervisor = user && (user.role === Role.SUPERVISOR || user.role === Role.MANAGER || user.role === Role.ADMIN);
         if (!isSupervisor) {
             setPendingReviewCount(0);
             return;

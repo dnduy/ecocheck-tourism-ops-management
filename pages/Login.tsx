@@ -33,9 +33,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             email: profile.email,
             password: 'google_auth' // Placeholder
           });
-          
-          authService.setToken(response.token);
-          authService.setCurrentUser(response.user);
           onLogin(response.user);
         } catch (err) {
           setError("Google login chưa được hỗ trợ. Vui lòng dùng Email/Password.");

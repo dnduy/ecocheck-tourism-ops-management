@@ -1,20 +1,14 @@
 # EcoCheck Smoke Tests
 
-Node.js automated smoke tests for validation of the core API workflow.
+Automated smoke tests for validating the core API workflow.
 
 ## 1. Prerequisites
 - Node.js & NPM
 - Running Backend (Local or Docker)
+- Co du lieu toi thieu: area + template + items + columns
 
-## 2. Setup
-Install dependencies:
-```bash
-cd scripts/smoke
-npm install
-```
-
-## 3. Configuration
-Set environment variables or create a `.env` file in `scripts/smoke/.env`:
+## 2. Configuration
+Set environment variables (or create a `.env` file and export before running):
 ```ini
 API_BASE_URL=http://localhost:8000/api
 TEST_EMAIL=admin@local.test
@@ -24,19 +18,20 @@ TEST_PASSWORD=ChangeMe123!
 # TEST_PASSWORD_SUP=password
 ```
 
-## 4. Running the Test
+## 3. Running the Test
 
 ### Local
 ```bash
-node smoke.test.js
+RUN_SMOKE_TESTS=true API_BASE_URL=http://localhost:8000/api npm run test:smoke
 ```
 
-### Docker
-To run this *against* the Docker containers from your host:
+### Deep flow (role + multi-column entries)
 ```bash
-# Ensure containers are up
-docker-compose up -d
+RUN_DEEP_TESTS=true API_BASE_URL=http://localhost:8000/api npm run test:deep
+```
 
-# Run
-node smoke.test.js
+### Seed data (optional, backend)
+```bash
+cd backend-app
+php artisan db:seed --class=SmokeTestSeeder
 ```

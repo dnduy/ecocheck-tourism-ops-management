@@ -1,4 +1,6 @@
 // API Base utilities with authentication
+import { authStore } from './authStore';
+
 const API_BASE = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000/api';
 const API_TIMEOUT_MS = 12000;
 
@@ -40,7 +42,7 @@ export const apiCall = async <T = any>(
   options: RequestInit & { data?: any } = {}
 ): Promise<T> => {
   const { data, ...fetchOptions } = options;
-  const token = localStorage.getItem('api_token');
+  const token = authStore.getToken();
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -62,8 +64,7 @@ export const apiCall = async <T = any>(
 
     // Handle 401 - dispatch event and clear token
     if (response.status === 401) {
-      localStorage.removeItem('api_token');
-      localStorage.removeItem('current_user');
+      authStore.clear();
       
       // Dispatch custom event instead of hard redirect
       window.dispatchEvent(new CustomEvent('tokenExpired', {

@@ -1,4 +1,12 @@
 import { apiGet, apiPost, apiPut, apiDelete, apiPatch } from './api';
+import { authStore } from './authStore';
+
+const unwrapResponse = <T = any>(res: any): T => {
+  if (res && typeof res === 'object' && 'data' in res) {
+    return res.data as T;
+  }
+  return res as T;
+};
 
 export interface RunDetail {
   run: {
@@ -64,21 +72,27 @@ export const runService = {
     if (params?.per_page) queryString.append('per_page', params.per_page.toString());
 
     const endpoint = queryString.toString() ? `/runs?${queryString}` : '/runs';
-    return apiGet(endpoint);
+    const res = await apiGet(endpoint);
+    return unwrapResponse(res);
   },
 
-  async create(areaId: number, date: string): Promise<any> {
+  async create(areaId: number, date: string, templateId?: number): Promise<any> {
     // Backend returns simple run object: { id, area_id, template_id, status, ... }
-    return apiPost('/runs', { area_id: areaId, date });
+    const payload: any = { area_id: areaId, date };
+    if (templateId) payload.checklist_template_id = templateId;
+    const res = await apiPost('/runs', payload);
+    return unwrapResponse(res);
   },
 
   async get(runId: number): Promise<RunDetail> {
-    return apiGet<RunDetail>(`/runs/${runId}`);
+    const res = await apiGet<RunDetail>(`/runs/${runId}`);
+    return unwrapResponse(res);
   },
 
   async update(runId: number, data: { status?: string; assigned_to?: number; verified_by?: number }): Promise<RunDetail> {
     // Backend expects PATCH for RunController@update
-    return apiPatch<RunDetail>(`/runs/${runId}`, data);
+    const res = await apiPatch<RunDetail>(`/runs/${runId}`, data);
+    return unwrapResponse(res);
   },
 
   async delete(runId: number): Promise<void> {
@@ -86,13 +100,14 @@ export const runService = {
   },
 
   async export(runId: number): Promise<void> {
-    const token = localStorage.getItem('api_token');
+    const token = authStore.getToken();
     const baseUrl = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000/api';
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const response = await fetch(`${baseUrl}/runs/${runId}/export`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
+      headers,
     });
 
     if (!response.ok) throw new Error('Export failed');

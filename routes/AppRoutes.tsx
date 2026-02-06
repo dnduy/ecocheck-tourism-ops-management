@@ -160,7 +160,12 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
                                         return colRole ? (colRole.name || '').toLowerCase() === lowerRole : false;
                                     }) || columns[0];
 
-                                    const columnId = matchedColumn?.id || runId;
+                                    if (!matchedColumn?.id) {
+                                        actions.addNotification('Lỗi', 'Checklist chưa có cột đánh giá hợp lệ', 'CRITICAL');
+                                        return;
+                                    }
+
+                                    const columnId = matchedColumn.id;
                                     const sessionId = matchedColumn?.session_id || detail.sessions?.[0]?.id;
                                     const roleId = matchedColumn?.role_id || roles.find((r: any) => (r.name || '').toLowerCase() === lowerRole)?.id;
 

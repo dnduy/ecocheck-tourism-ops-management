@@ -1,8 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User } from '../types';
-import { db } from '../services/database';
 import { useNotification } from './NotificationContext';
+import { authStore } from '../services/authStore';
 
 interface AuthContextType {
     user: User | null;
@@ -19,22 +19,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [isAuthLoading, setIsAuthLoading] = useState(true);
     const { addNotification } = useNotification();
 
-    // Initialize Auth State from LocalStorage
+    // Initialize Auth State from in-memory store
     useEffect(() => {
         const initAuth = async () => {
             try {
-                const apiToken = localStorage.getItem('api_token');
-                const currentUser = localStorage.getItem('current_user');
-
-                if (apiToken && currentUser) {
-                    try {
-                        const parsedUser = JSON.parse(currentUser);
-                        if (import.meta.env.DEV) console.log('Found API session, setting user:', parsedUser);
-                        setUser(parsedUser);
-                    } catch (e) {
-                        console.error('Failed to parse user from storage:', e);
-                        localStorage.removeItem('current_user');
-                    }
+                const currentUser = authStore.getUser();
+                if (currentUser) {
+                    if (import.meta.env.DEV) console.log('Found API session (memory), setting user:', currentUser);
+                    setUser(currentUser);
                 }
             } catch (e) {
                 console.error('Auth initialization error:', e);
@@ -50,8 +42,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const handleTokenExpiry = () => {
             addNotification('Phiên hết hạn', 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'CRITICAL');
             setUser(null);
-            localStorage.removeItem('api_token');
-            localStorage.removeItem('current_user');
+            authStore.clear();
         };
 
         window.addEventListener('tokenExpired', handleTokenExpiry);
@@ -60,19 +51,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const login = useCallback((userFromLogin: User) => {
         setUser(userFromLogin);
+        authStore.setUser(userFromLogin);
         addNotification('Đăng nhập thành công', `Chào mừng ${userFromLogin.name}!`, 'SUCCESS');
     }, [addNotification]);
 
     const updateUser = useCallback((updatedUser: User) => {
         setUser(updatedUser);
-        localStorage.setItem('current_user', JSON.stringify(updatedUser));
+        authStore.setUser(updatedUser);
     }, []);
 
     const logout = useCallback(() => {
         setUser(null);
-        localStorage.removeItem('api_token');
-        localStorage.removeItem('current_user');
-        db.clearSession();
+        authStore.clear();
         addNotification('Đăng xuất', 'Đã đăng xuất thành công', 'NORMAL');
     }, [addNotification]);
 

@@ -1,5 +1,6 @@
 import { apiPost, apiGet } from './api';
 import { User } from '../types';
+import { authStore } from './authStore';
 
 export interface LoginCredentials {
   email: string;
@@ -17,11 +18,9 @@ export const authService = {
     const response = await apiPost<AuthResponse>('/auth/login', credentials);
     console.log('authService.login response:', response);
     
-    // Auto-save token and user after successful login
+    // Keep token/user in memory only
     if (response.token && response.user) {
-      console.log('Saving token and user to localStorage');
-      this.setToken(response.token);
-      this.setCurrentUser(response.user);
+      authStore.setAuth(response.token, response.user);
     }
     
     return response;
@@ -33,8 +32,7 @@ export const authService = {
     } catch (error) {
       console.error('Logout error:', error);
     }
-    localStorage.removeItem('api_token');
-    localStorage.removeItem('current_user');
+    authStore.clear();
   },
 
   async getMe(): Promise<User> {
@@ -42,20 +40,19 @@ export const authService = {
   },
 
   setToken(token: string): void {
-    localStorage.setItem('api_token', token);
+    authStore.setToken(token);
   },
 
   getToken(): string | null {
-    return localStorage.getItem('api_token');
+    return authStore.getToken();
   },
 
   setCurrentUser(user: User): void {
-    localStorage.setItem('current_user', JSON.stringify(user));
+    authStore.setUser(user);
   },
 
   getCurrentUser(): User | null {
-    const user = localStorage.getItem('current_user');
-    return user ? JSON.parse(user) : null;
+    return authStore.getUser();
   },
 
   isAuthenticated(): boolean {

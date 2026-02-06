@@ -411,7 +411,7 @@ export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, us
                       className="flex-1 border border-blue-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-blue-100"
                     >
                       <option value="">-- Chọn người --</option>
-                      {users.filter(u => u.role === 'maintenance' || u.role === 'staff').map(u => (
+                      {users.filter(u => u.role === 'staff').map(u => (
                         <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                       ))}
                     </select>

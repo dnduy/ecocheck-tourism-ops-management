@@ -1,8 +1,9 @@
 
-import { useEffect } from 'react';
 import { User, Role } from '../types';
 import { runService } from '../services/runService';
 import { useNotification } from '../contexts/NotificationContext';
+
+const seenSummaries = new Set<string>();
 
 export const useStaffNotifications = (user: User | null) => {
     const { addNotification } = useNotification();
@@ -12,7 +13,7 @@ export const useStaffNotifications = (user: User | null) => {
             if (!user || user.role !== Role.STAFF) return;
             const todayStr = new Date().toISOString().split('T')[0];
             const storageKey = `daily_summary_${user.id}_${todayStr}`;
-            if (localStorage.getItem(storageKey)) return;
+            if (seenSummaries.has(storageKey)) return;
 
             const [todayResp, recentResp, tomorrowResp] = await Promise.all([
                 runService.list({ date: todayStr, assigned_to: Number(user.id) }),
@@ -39,7 +40,7 @@ export const useStaffNotifications = (user: User | null) => {
             if (tomorrowRuns.length > 0) {
                 addNotification('Chuẩn bị cho ngày mai', `Dự kiến có ${tomorrowRuns.length} checklist`, 'NORMAL');
             }
-            localStorage.setItem(storageKey, '1');
+            seenSummaries.add(storageKey);
         } catch (e) {
             console.warn('Staff summary notification failed:', e);
         }

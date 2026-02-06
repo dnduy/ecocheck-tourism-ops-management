@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete } from './api';
+import { authStore } from './authStore';
 
 export interface TemplateColumnInput {
   label: string;
@@ -44,19 +45,22 @@ export const templateService = {
     await apiDelete<void>(`/templates/${id}`);
   },
 
-  async import(file: File, name: string, description?: string): Promise<any> {
+  async import(file: File, name: string, areaId: string, description?: string): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('name', name);
+    formData.append('area_id', areaId);
     if (description) formData.append('description', description);
 
-    const token = localStorage.getItem('api_token');
-    const response = await fetch(`http://127.0.0.1:8000/api/templates/import`, {
+    const token = authStore.getToken();
+    const baseUrl = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000/api';
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(`${baseUrl}/templates/import`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        // Do NOT set Content-Type, browser sets it with boundary for FormData
-      },
+      headers,
+      // Do NOT set Content-Type, browser sets it with boundary for FormData
       body: formData,
     });
 

@@ -44,7 +44,7 @@ export const Admin: React.FC<AdminProps> = ({
 }) => {
   // Determine available tabs based on Role
   const getAvailableTabs = () => {
-    if (currentUser.role === Role.MANAGER) {
+    if (currentUser.role === Role.ADMIN) {
       return [
         { id: 'STAFF_STATS', label: 'Thống kê NS', icon: BarChart3 },
         { id: 'SUPERVISOR_STATS', label: 'Thống kê GS', icon: TrendingUp },
@@ -55,10 +55,18 @@ export const Admin: React.FC<AdminProps> = ({
         { id: 'CHECKLISTS', label: 'Mẫu', icon: ClipboardList },
         { id: 'TEMPLATES', label: 'Template', icon: Layers }
       ];
-    } else if (currentUser.role === Role.SUPERVISOR) {
-      // Supervisor can also assign work
+    } else if (currentUser.role === Role.MANAGER) {
       return [
         { id: 'STAFF_STATS', label: 'Thống kê NS', icon: BarChart3 },
+        { id: 'SUPERVISOR_STATS', label: 'Thống kê GS', icon: TrendingUp },
+        { id: 'ASSIGN_WORK', label: 'Gán việc', icon: UserCheck },
+        { id: 'SHIFTS', label: 'Ca trực', icon: Clock },
+        { id: 'CHECKLISTS', label: 'Mẫu', icon: ClipboardList },
+        { id: 'TEMPLATES', label: 'Template', icon: Layers }
+      ];
+    } else if (currentUser.role === Role.SUPERVISOR) {
+      // Supervisor can manage runs and shifts
+      return [
         { id: 'ASSIGN_WORK', label: 'Gán việc', icon: UserCheck },
         { id: 'SHIFTS', label: 'Ca trực', icon: Clock },
         { id: 'CHECKLISTS', label: 'Mẫu', icon: ClipboardList }
@@ -145,16 +153,22 @@ export const Admin: React.FC<AdminProps> = ({
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importName, setImportName] = useState('');
+  const [importAreaId, setImportAreaId] = useState<string>('');
 
   const handleImportTemplate = async () => {
     if (!importFile) return;
+    if (!importAreaId) {
+      alert('Vui lòng chọn khu vực cho template import');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await templateService.import(importFile, importName);
+      await templateService.import(importFile, importName, importAreaId);
       alert('✅ Import thành công!');
       setShowImportModal(false);
       setImportFile(null);
       setImportName('');
+      setImportAreaId('');
       if (onTemplatesChanged) onTemplatesChanged();
     } catch (e) {
       alert('❌ Lỗi: ' + (e as Error).message);
@@ -287,47 +301,16 @@ export const Admin: React.FC<AdminProps> = ({
     }
 
     try {
-      // 1) Tạo run theo API backend (chỉ cần area_id và date)
-      const createResp = await fetch('http://127.0.0.1:8000/api/runs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('api_token')}`,
-        },
-        body: JSON.stringify({
-          area_id: Number(areaId),
-          date,
-        }),
-      });
+      // 1) Tạo run theo API backend (area_id + date + template)
+      const createdRun = await runService.create(Number(areaId), date, Number(templateId));
+      const runId = createdRun?.id || createdRun?.run?.id;
 
-      if (!createResp.ok) {
-        const errText = await createResp.text();
-        throw new Error(`Không thể tạo công việc: ${errText}`);
-      }
-
-      const createdRun = await createResp.json();
-      const runId = createdRun?.id;
-
-      // 2) Nếu có người thực hiện/giám sát, cập nhật run bằng PUT
+      // 2) Nếu có người thực hiện/giám sát, cập nhật run
       if (runId && (assignedTo || verifiedBy)) {
-        const updateResp = await fetch(`http://127.0.0.1:8000/api/runs/${runId}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('api_token')}`,
-          },
-          body: JSON.stringify({
-            assigned_to: assignedTo ? Number(assignedTo) : null,
-            verified_by: verifiedBy ? Number(verifiedBy) : null,
-          }),
+        await runService.update(runId, {
+          assigned_to: assignedTo ? Number(assignedTo) : undefined,
+          verified_by: verifiedBy ? Number(verifiedBy) : undefined,
         });
-
-        if (!updateResp.ok) {
-          const errText = await updateResp.text();
-          throw new Error(`Tạo xong nhưng cập nhật người phụ trách thất bại: ${errText}`);
-        }
       }
 
       alert('✅ Đã gán việc thành công!');
@@ -417,13 +400,7 @@ export const Admin: React.FC<AdminProps> = ({
   const handleDeleteTemplate = async (id: number) => {
     if (!window.confirm('Xác nhận xóa template này? Hành động này sẽ xóa cả nhóm, hạng mục và checklist liên quan.')) return;
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/templates/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('api_token')}`
-        }
-      });
-      if (!response.ok && response.status !== 204) throw new Error('Không thể xóa template');
+      await templateService.delete(id);
       alert('✅ Đã xóa template');
       if (onTemplatesChanged) onTemplatesChanged();
     } catch (error) {
@@ -519,9 +496,9 @@ export const Admin: React.FC<AdminProps> = ({
     <div className="p-4 pb-24 h-full flex flex-col">
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-gray-900">Quản trị hệ thống</h1>
-        <div className={`text-[10px] font-bold px-2 py-1 rounded inline-flex items-center gap-1 mt-1 uppercase ${currentUser.role === Role.MANAGER ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>
+        <div className={`text-[10px] font-bold px-2 py-1 rounded inline-flex items-center gap-1 mt-1 uppercase ${currentUser.role === Role.ADMIN ? 'bg-emerald-100 text-emerald-700' : currentUser.role === Role.MANAGER ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>
           <ShieldCheck size={12} />
-          Chế độ: {currentUser.role === Role.MANAGER ? 'Toàn quyền (Manager)' : 'Vận hành (Supervisor)'}
+          Chế độ: {currentUser.role === Role.ADMIN ? 'Toàn quyền (Admin)' : currentUser.role === Role.MANAGER ? 'Quản lý (Manager)' : 'Giám sát (Supervisor)'}
         </div>
       </div>
 
@@ -579,7 +556,8 @@ export const Admin: React.FC<AdminProps> = ({
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-gray-900 text-sm truncate">{u.name}</h3>
                     <p className="text-[10px] text-gray-500 truncate mb-1">{u.email}</p>
-                    <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${u.role === Role.MANAGER ? 'bg-purple-100 text-purple-700' :
+                    <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${u.role === Role.ADMIN ? 'bg-emerald-100 text-emerald-700' :
+                      u.role === Role.MANAGER ? 'bg-purple-100 text-purple-700' :
                       u.role === Role.SUPERVISOR ? 'bg-orange-100 text-orange-700' : 'bg-brand-50 text-brand-700'
                       }`}>{u.role}</span>
                   </div>
@@ -750,7 +728,9 @@ export const Admin: React.FC<AdminProps> = ({
                           className={`text-xs p-2.5 rounded-xl border-none font-bold focus:ring-1 outline-none ${!cl.assignedTo ? 'bg-red-50 text-red-600 focus:ring-red-200' : 'bg-gray-50 text-brand-700 focus:ring-brand-500'}`}
                         >
                           <option value="">-- Chưa phân công --</option>
-                          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          {users.filter(u => u.role === Role.STAFF || u.role === Role.MAINTENANCE).map(u => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
                         </select>
                       </div>
 
@@ -764,7 +744,7 @@ export const Admin: React.FC<AdminProps> = ({
                           className={`text-xs p-2.5 rounded-xl border-none font-bold focus:ring-1 outline-none ${!cl.verifiedBy ? 'bg-red-50 text-red-600 focus:ring-red-200' : 'bg-purple-50 text-purple-700 focus:ring-purple-500'}`}
                         >
                           <option value="">-- Chưa phân công --</option>
-                          {users.filter(u => u.role !== Role.STAFF).map(u => (
+                          {users.filter(u => u.role === Role.ADMIN || u.role === Role.MANAGER || u.role === Role.SUPERVISOR).map(u => (
                             <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                           ))}
                         </select>
@@ -783,7 +763,13 @@ export const Admin: React.FC<AdminProps> = ({
             <div className="flex justify-between items-center px-1">
               <h2 className="font-bold text-gray-800">Template Checklist ({templates.length})</h2>
               <div className="flex gap-2">
-                <button onClick={() => setShowImportModal(true)} className="bg-green-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-green-100">
+                <button
+                  onClick={() => {
+                    setImportAreaId(areas[0]?.id ? String(areas[0].id) : '');
+                    setShowImportModal(true);
+                  }}
+                  className="bg-green-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-green-100"
+                >
                   <FileSpreadsheet size={16} className="mr-1" /> Import Excel
                 </button>
                 <button onClick={() => setShowTemplateModal(true)} className="bg-brand-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-brand-100">
@@ -854,6 +840,21 @@ export const Admin: React.FC<AdminProps> = ({
                         placeholder="Để trống sẽ lấy tên từ file/sheet"
                         className="w-full p-2 border rounded-xl text-xs"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Khu vực áp dụng</label>
+                      <select
+                        value={importAreaId}
+                        onChange={(e) => setImportAreaId(e.target.value)}
+                        className="w-full p-2 border rounded-xl text-xs"
+                      >
+                        <option value="">Chọn khu vực</option>
+                        {areas.map((a) => (
+                          <option key={a.id} value={String(a.id)}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <div className="flex gap-3 mt-6">
@@ -1123,7 +1124,9 @@ export const Admin: React.FC<AdminProps> = ({
                       className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold"
                     >
                       <option value="">-- Chọn --</option>
-                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      {users.filter(u => u.role === Role.STAFF || u.role === Role.MAINTENANCE).map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -1134,7 +1137,9 @@ export const Admin: React.FC<AdminProps> = ({
                       className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold"
                     >
                       <option value="">-- Chọn --</option>
-                      {users.filter(u => u.role !== Role.STAFF).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      {users.filter(u => u.role === Role.ADMIN || u.role === Role.MANAGER || u.role === Role.SUPERVISOR).map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -1329,7 +1334,7 @@ export const Admin: React.FC<AdminProps> = ({
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {users.map(u => (
+                  {users.filter(u => u.role === Role.STAFF || u.role === Role.MAINTENANCE).map(u => (
                     <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                   ))}
                 </select>
@@ -1343,7 +1348,7 @@ export const Admin: React.FC<AdminProps> = ({
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {users.filter(u => u.role !== Role.STAFF).map(u => (
+                  {users.filter(u => u.role === Role.ADMIN || u.role === Role.MANAGER || u.role === Role.SUPERVISOR).map(u => (
                     <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                   ))}
                 </select>

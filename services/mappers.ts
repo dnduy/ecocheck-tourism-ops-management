@@ -58,27 +58,40 @@ export const mapRunToChecklist = (runData: any, areaList: Area[]): Checklist => 
 
     let workStatus = run.work_status as WorkStatus;
     if (!workStatus) {
-        if (run.status === 'pending') workStatus = WorkStatus.PENDING;
-        else if (run.status === 'in_progress') workStatus = WorkStatus.IN_PROGRESS;
-        else if (run.status === 'completed') workStatus = WorkStatus.COMPLETED;
-        else if (run.status === 'reviewed') workStatus = WorkStatus.APPROVED;
-        else workStatus = WorkStatus.PENDING;
+        const rawStatus = String(run.status || '').toLowerCase();
+        if (rawStatus === 'open' || rawStatus === 'pending' || rawStatus === 'draft') {
+            workStatus = WorkStatus.PENDING;
+        } else if (rawStatus === 'active' || rawStatus === 'in_progress') {
+            workStatus = WorkStatus.IN_PROGRESS;
+        } else if (rawStatus === 'done' || rawStatus === 'completed') {
+            workStatus = WorkStatus.COMPLETED;
+        } else if (rawStatus === 'needs_review') {
+            workStatus = WorkStatus.NEEDS_REVIEW;
+        } else if (rawStatus === 'approved') {
+            workStatus = WorkStatus.APPROVED;
+        } else if (rawStatus === 'rejected') {
+            workStatus = WorkStatus.REJECTED;
+        } else if (rawStatus === 'reviewed') {
+            workStatus = WorkStatus.APPROVED;
+        } else {
+            workStatus = WorkStatus.PENDING;
+        }
     }
 
     let mappedStatus = ChecklistStatus.PENDING;
     // Map from workStatus (source of truth) to ChecklistStatus (UI)
     if (workStatus === WorkStatus.IN_PROGRESS) mappedStatus = ChecklistStatus.IN_PROGRESS;
-    else if (workStatus === WorkStatus.COMPLETED) mappedStatus = ChecklistStatus.COMPLETED;
+    else if (workStatus === WorkStatus.COMPLETED || workStatus === WorkStatus.NEEDS_REVIEW) mappedStatus = ChecklistStatus.COMPLETED;
     else if (workStatus === WorkStatus.APPROVED || workStatus === WorkStatus.REJECTED) mappedStatus = ChecklistStatus.REVIEWED;
     // Fallback or legacy status check only if workStatus didn't catch it (optional)
-    else if (run.status === 'reviewed') mappedStatus = ChecklistStatus.REVIEWED;
+    else if (String(run.status || '').toLowerCase() === 'reviewed') mappedStatus = ChecklistStatus.REVIEWED;
 
     return {
         id: String(run.id),
         templateName: template?.name || 'Checklist',
         area,
         shift: 'Ca A',
-        date: run.run_date || new Date().toISOString().split('T')[0],
+        date: run.run_date || run.date || new Date().toISOString().split('T')[0],
         status: mappedStatus,
         workStatus: workStatus,
         items: mappedItems,

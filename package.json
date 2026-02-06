@@ -8,6 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:smoke": "RUN_SMOKE_TESTS=true vitest run scripts/smoke/smoke.test.js",
+    "test:deep": "RUN_DEEP_TESTS=true vitest run scripts/smoke/deep-flow.test.js",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write ."
   },

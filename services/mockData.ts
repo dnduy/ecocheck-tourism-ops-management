@@ -13,7 +13,7 @@ export const CURRENT_USER: User = {
 export const MOCK_USERS: User[] = [
   { id: 'u1', name: 'Nguyễn Văn A', role: Role.MANAGER, avatar: 'https://ui-avatars.com/api/?name=Nguyen+Van+A&background=0c4a6e&color=fff', email: 'admin@ecocheck.vn', password: 'admin' },
   { id: 'u2', name: 'Trần Thị B', role: Role.STAFF, avatar: 'https://ui-avatars.com/api/?name=Tran+Thi+B&background=0284c7&color=fff', email: 'staff@ecocheck.vn', password: 'staff' },
-  { id: 'u3', name: 'Lê Văn C', role: Role.MAINTENANCE, avatar: 'https://ui-avatars.com/api/?name=Le+Van+C&background=10b981&color=fff', email: 'maintenance@ecocheck.vn', password: '123' },
+  { id: 'u3', name: 'Lê Văn C', role: Role.STAFF, avatar: 'https://ui-avatars.com/api/?name=Le+Van+C&background=10b981&color=fff', email: 'staff2@ecocheck.vn', password: '123' },
   { id: 'u4', name: 'Phạm Giám Sát', role: Role.SUPERVISOR, avatar: 'https://ui-avatars.com/api/?name=Pham+Giam+Sat&background=f59e0b&color=fff', email: 'supervisor@ecocheck.vn', password: '123' },
 ];
 

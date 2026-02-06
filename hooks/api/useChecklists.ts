@@ -10,13 +10,13 @@ export const useChecklists = (filters?: { assigned_to?: number; date?: string; s
     const { data: areas = [] } = useAreas();
 
     return useQuery({
-        queryKey: ['checklists', filters],
+        queryKey: ['checklists', filters, areas],
         queryFn: async () => {
             const resp = await runService.list({ ...filters, per_page: 1000 });
             const apiRuns: any[] = resp.data || resp || [];
             return apiRuns.map(run => mapRunToChecklist(run, areas));
         },
-        enabled: areas.length > 0, // Wait for areas to load
+        // enabled: areas.length > 0, // Removed to allow fetching without areas
         refetchInterval: 60000,
     });
 };

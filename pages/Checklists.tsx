@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Checklist, ChecklistStatus, User, Role } from '../types';
+import { Checklist, ChecklistStatus, User, Role, WorkStatus } from '../types';
 import { MapPin, Clock, User as UserIcon, ClipboardList, ShieldCheck, UserCheck, Calendar, ArrowUpDown, History } from 'lucide-react';
 import { ChecklistHistory } from '../components/ChecklistHistory';
 
@@ -18,18 +18,18 @@ const formatDateVN = (dateStr: string): string => {
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  
+
   const checkDate = new Date(date);
   const checkToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const checkTomorrow = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
-  
+
   if (checkDate.getTime() === checkToday.getTime()) {
     return `📅 Hôm nay (${dateStr})`;
   }
   if (checkDate.getTime() === checkTomorrow.getTime()) {
     return `📅 Ngày mai (${dateStr})`;
   }
-  
+
   const weekDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
   const weekDay = weekDays[date.getDay() === 0 ? 6 : date.getDay() - 1];
   return `📅 ${weekDay}, ${dateStr}`;
@@ -47,7 +47,7 @@ const groupByDate = (checklists: Checklist[]): { date: string; checklists: Check
     }
     return acc;
   }, [] as { date: string; checklists: Checklist[] }[]);
-  
+
   // Sort by date descending (newest first)
   return grouped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
@@ -64,10 +64,10 @@ const countByStatus = (checklists: Checklist[]): { pending: number; inProgress: 
 
 export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChecklist, currentUser, users, onRefresh }) => {
   const [filter, setFilter] = useState<'ALL' | 'MINE' | 'TO_VERIFY' | 'COMPLETED'>(
-    currentUser.role === Role.STAFF ? 'MINE' : (currentUser.role === Role.MANAGER || currentUser.role === Role.SUPERVISOR ? 'TO_VERIFY' : 'ALL')
+    currentUser.role === Role.STAFF ? 'MINE' : (currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER || currentUser.role === Role.SUPERVISOR ? 'TO_VERIFY' : 'ALL')
   );
   const [sortBy, setSortBy] = useState<'DATE' | 'STATUS' | 'AREA'>('DATE');
-  
+
   // Local timezone-safe YYYY-MM-DD
   const localISODate = (d?: Date) => {
     const date = d || new Date();
@@ -80,7 +80,7 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
   const [selectedDate, setSelectedDate] = useState<string>(getDefaultDate());
 
   // History Modal State
-  const [historyTarget, setHistoryTarget] = useState<{templateName: string, areaId: string, areaName: string} | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<{ templateName: string, areaId: string, areaName: string } | null>(null);
 
   // Refresh data when component mounts (for STAFF to see newly assigned tasks)
   useEffect(() => {
@@ -114,8 +114,9 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
     if (filter === 'TO_VERIFY') {
       // Show runs that are completed and need review
       // Also show runs that verifier is assigned to current user
-      return c.status === ChecklistStatus.COMPLETED || 
-             (c.status === 'needs_review' && String(c.verifiedBy) === String(currentUser.id));
+      const needsReview = c.workStatus === WorkStatus.NEEDS_REVIEW;
+      const completed = c.status === ChecklistStatus.COMPLETED || c.workStatus === WorkStatus.COMPLETED;
+      return completed || (needsReview && String(c.verifiedBy) === String(currentUser.id));
     }
     if (filter === 'COMPLETED') return c.status === ChecklistStatus.REVIEWED;
     return true;
@@ -150,41 +151,43 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
         {filter !== 'MINE' && filter !== 'TO_VERIFY' && (
           <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-gray-200 shadow-sm">
             <Calendar size={14} className="text-brand-600" />
-            <input 
-              type="date" 
-              value={selectedDate} 
+            <input
+              type="date"
+              value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
               className="text-xs font-bold text-gray-700 outline-none bg-transparent"
             />
           </div>
         )}
       </div>
-      
+
       {/* Filters with Counters */}
       <div className="flex space-x-2 mb-4 overflow-x-auto pb-2 scrollbar-hide shrink-0">
         {(() => {
           const allCount = checklists.length;
           const mineCount = checklists.filter(c => String(c.assignedTo) === String(currentUser.id)).length;
-          const toVerifyCount = checklists.filter(c => (c.status === ChecklistStatus.COMPLETED || (c.status === 'needs_review' && String(c.verifiedBy) === String(currentUser.id)))).length;
+          const toVerifyCount = checklists.filter(c => {
+            const needsReview = c.workStatus === WorkStatus.NEEDS_REVIEW;
+            const completed = c.status === ChecklistStatus.COMPLETED || c.workStatus === WorkStatus.COMPLETED;
+            return completed || (needsReview && String(c.verifiedBy) === String(currentUser.id));
+          }).length;
           const completedCount = checklists.filter(c => c.status === ChecklistStatus.REVIEWED).length;
-          
+
           return [
-            { id: 'ALL', label: 'Tất cả', count: allCount }, 
-            { id: 'MINE', label: 'Việc của tôi', count: mineCount }, 
-            { id: 'TO_VERIFY', label: 'Cần duyệt', count: toVerifyCount }, 
+            { id: 'ALL', label: 'Tất cả', count: allCount },
+            { id: 'MINE', label: 'Việc của tôi', count: mineCount },
+            { id: 'TO_VERIFY', label: 'Cần duyệt', count: toVerifyCount },
             { id: 'COMPLETED', label: 'Lịch sử', count: completedCount }
           ].map((f) => (
             <button
               key={f.id}
               onClick={() => setFilter(f.id as any)}
-              className={`px-5 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all duration-200 border flex items-center gap-2 ${
-                filter === f.id ? 'bg-brand-600 text-white shadow-lg shadow-brand-100 border-brand-600' : 'bg-white text-gray-500 border-gray-100 hover:border-brand-200'
-              }`}
+              className={`px-5 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all duration-200 border flex items-center gap-2 ${filter === f.id ? 'bg-brand-600 text-white shadow-lg shadow-brand-100 border-brand-600' : 'bg-white text-gray-500 border-gray-100 hover:border-brand-200'
+                }`}
             >
               {f.label}
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                filter === f.id ? 'bg-white/20' : 'bg-gray-100'
-              }`}>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${filter === f.id ? 'bg-white/20' : 'bg-gray-100'
+                }`}>
                 {f.count}
               </span>
             </button>
@@ -202,20 +205,20 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
           })()}
           {filter !== 'MINE' && `Hiển thị ${sortedData.length} nhiệm vụ`}
         </span>
-        
+
         {/* Sorting Dropdown */}
         <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-gray-100 shadow-sm">
-           <ArrowUpDown size={14} className="text-brand-500" />
-           <span className="text-[10px] text-gray-400 font-medium hidden sm:inline">Sắp xếp:</span>
-           <select 
-             value={sortBy}
-             onChange={(e) => setSortBy(e.target.value as any)}
-             className="bg-transparent text-[10px] font-bold text-gray-600 outline-none cursor-pointer"
-           >
-             <option value="DATE">Mới nhất</option>
-             <option value="STATUS">Trạng thái</option>
-             <option value="AREA">Tên khu vực</option>
-           </select>
+          <ArrowUpDown size={14} className="text-brand-500" />
+          <span className="text-[10px] text-gray-400 font-medium hidden sm:inline">Sắp xếp:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="bg-transparent text-[10px] font-bold text-gray-600 outline-none cursor-pointer"
+          >
+            <option value="DATE">Mới nhất</option>
+            <option value="STATUS">Trạng thái</option>
+            <option value="AREA">Tên khu vực</option>
+          </select>
         </div>
       </div>
 
@@ -225,7 +228,7 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
           const today = localISODate();
           const todayChecklists = filteredData.filter(c => c.date?.split('T')[0] === today);
           const stats = countByStatus(todayChecklists);
-          
+
           return todayChecklists.length > 0 ? (
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-2xl border border-blue-200 sticky top-0 z-10 shadow-sm">
               <div className="flex items-center justify-between mb-3">
@@ -253,7 +256,7 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
             </div>
           ) : null;
         })()}
-        
+
         {sortedData.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
             <ClipboardList size={48} className="mx-auto text-gray-100 mb-3" />
@@ -263,7 +266,7 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
           // Group by date and render
           groupByDate(sortedData).map(({ date, checklists: dateChecklists }) => {
             const stats = countByStatus(dateChecklists);
-            
+
             return (
               <div key={date}>
                 {/* Sticky Date Header */}
@@ -286,28 +289,28 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Checklists for this date */}
-                <div className="space-y-3 mb-4">
+                {/* Checklists for this date */}
+                <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 mb-4">
                   {dateChecklists.map((cl) => {
                     const executor = getUser(cl.assignedTo);
                     const verifier = getUser(cl.verifiedBy);
                     const isPending = cl.status === ChecklistStatus.PENDING;
-                    
+
                     // Special state for Verifiers seeing pending items
                     const isWaitingForStaff = filter === 'TO_VERIFY' && (cl.status === ChecklistStatus.PENDING || cl.status === ChecklistStatus.IN_PROGRESS);
 
                     return (
-                      <div 
-                        key={cl.id} 
-                        className={`bg-white p-5 rounded-3xl shadow-sm border transition-all hover:shadow-md ${
-                          isPending 
-                            ? 'opacity-75 grayscale-[0.1] border-gray-100' 
+                      <div
+                        key={cl.id}
+                        className={`bg-white p-5 rounded-3xl shadow-sm border transition-all hover:shadow-md ${isPending
+                            ? 'opacity-75 grayscale-[0.1] border-gray-100'
                             : 'border-gray-50 hover:border-brand-50'
-                        }`}
+                          }`}
                       >
                         <div className="flex justify-between items-start mb-4">
-                          <div 
+                          <div
                             className="flex-1 mr-3 cursor-pointer"
                             onClick={() => onSelectChecklist(cl.id)}
                           >
@@ -315,31 +318,30 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
                               {cl.templateName}
                             </h3>
                             <div className="flex items-center gap-3">
-                              <div className="flex items-center text-[10px] text-gray-400"><MapPin size={10} className="mr-1"/>{cl.area.name}</div>
-                              <div className="flex items-center text-[10px] text-gray-400"><Clock size={10} className="mr-1"/>{cl.shift}</div>
+                              <div className="flex items-center text-[10px] text-gray-400"><MapPin size={10} className="mr-1" />{cl.area.name}</div>
+                              <div className="flex items-center text-[10px] text-gray-400"><Clock size={10} className="mr-1" />{cl.shift}</div>
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-2">
-                             <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5">
                               {isWaitingForStaff ? (
                                 <span className="text-[8px] font-bold px-2 py-1 rounded-lg uppercase whitespace-nowrap tracking-wider bg-gray-100 text-gray-500 border border-gray-200">
                                   Chờ nhân viên
                                 </span>
                               ) : (
-                                <span className={`text-[8px] font-bold px-2 py-1 rounded-lg uppercase whitespace-nowrap tracking-wider ${
-                                  cl.status === ChecklistStatus.PENDING ? 'bg-gray-100 text-gray-400' :
-                                  cl.status === ChecklistStatus.IN_PROGRESS ? 'bg-blue-50 text-blue-600' :
-                                  cl.status === ChecklistStatus.COMPLETED ? 'bg-orange-50 text-orange-600 animate-pulse' :
-                                  'bg-green-50 text-green-600'
-                                }`}>
-                                  {cl.status === ChecklistStatus.PENDING ? 'Chưa bắt đầu' : 
-                                  cl.status === ChecklistStatus.IN_PROGRESS ? 'Đang thực hiện' : 
-                                  cl.status === ChecklistStatus.COMPLETED ? 'Chờ kiểm tra' : 'Đã duyệt'}
+                                <span className={`text-[8px] font-bold px-2 py-1 rounded-lg uppercase whitespace-nowrap tracking-wider ${cl.status === ChecklistStatus.PENDING ? 'bg-gray-100 text-gray-400' :
+                                    cl.status === ChecklistStatus.IN_PROGRESS ? 'bg-blue-50 text-blue-600' :
+                                      cl.status === ChecklistStatus.COMPLETED ? 'bg-orange-50 text-orange-600 animate-pulse' :
+                                        'bg-green-50 text-green-600'
+                                  }`}>
+                                  {cl.status === ChecklistStatus.PENDING ? 'Chưa bắt đầu' :
+                                    cl.status === ChecklistStatus.IN_PROGRESS ? 'Đang thực hiện' :
+                                      cl.status === ChecklistStatus.COMPLETED ? 'Chờ kiểm tra' : 'Đã duyệt'}
                                 </span>
                               )}
                             </div>
                             {/* History Button */}
-                            <button 
+                            <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setHistoryTarget({ templateName: cl.templateName, areaId: cl.area.id, areaName: cl.area.name });
@@ -351,8 +353,8 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
                             </button>
                           </div>
                         </div>
-                        
-                        <div 
+
+                        <div
                           className="flex items-center justify-between pt-4 border-t border-gray-50 cursor-pointer"
                           onClick={() => onSelectChecklist(cl.id)}
                         >
@@ -360,17 +362,17 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
                             {executor ? (
                               <img src={executor.avatar} className={`w-8 h-8 rounded-full border-2 border-white bg-brand-50 object-cover ${isPending ? 'opacity-50' : ''}`} title={`Thực hiện: ${executor.name}`} />
                             ) : (
-                              <div className="w-8 h-8 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400" title="Chưa gán người làm"><UserIcon size={12}/></div>
+                              <div className="w-8 h-8 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400" title="Chưa gán người làm"><UserIcon size={12} /></div>
                             )}
                             {verifier ? (
                               <img src={verifier.avatar} className={`w-8 h-8 rounded-full border-2 border-white bg-purple-50 object-cover ${isPending ? 'opacity-50' : ''}`} title={`Kiểm tra: ${verifier.name}`} />
                             ) : (
-                               <div className="w-8 h-8 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400" title="Chưa gán người duyệt"><ShieldCheck size={12}/></div>
+                              <div className="w-8 h-8 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400" title="Chưa gán người duyệt"><ShieldCheck size={12} /></div>
                             )}
                           </div>
                           <div className="flex flex-col items-end">
                             <div className="flex items-center gap-1.5 text-[9px] font-bold text-gray-400">
-                              <UserCheck size={12} className={executor ? "text-brand-300" : "text-gray-300"} /> 
+                              <UserCheck size={12} className={executor ? "text-brand-300" : "text-gray-300"} />
                               {executor?.name || <span className="text-red-300 italic">Chưa gán</span>}
                             </div>
                             {verifier && (
@@ -392,7 +394,7 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
 
       {/* HISTORY MODAL */}
       {historyTarget && (
-        <ChecklistHistory 
+        <ChecklistHistory
           templateName={historyTarget.templateName}
           areaId={historyTarget.areaId}
           areaName={historyTarget.areaName}

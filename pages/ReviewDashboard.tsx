@@ -67,7 +67,7 @@ export const ReviewDashboard: React.FC<ReviewDashboardProps> = ({ currentUser })
     }
   };
 
-  if (currentUser.role !== 'supervisor' && currentUser.role !== 'manager') {
+  if (currentUser.role !== 'supervisor' && currentUser.role !== 'manager' && currentUser.role !== 'admin') {
     return (
       <div className="p-6 text-center">
         <p className="text-gray-500">Bạn không có quyền truy cập trang này</p>

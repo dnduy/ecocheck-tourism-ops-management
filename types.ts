@@ -1,8 +1,8 @@
 
 export enum Role {
+  ADMIN = 'admin',
   STAFF = 'staff',
   SUPERVISOR = 'supervisor',
-  MAINTENANCE = 'maintenance',
   MANAGER = 'manager'
 }
 
@@ -42,7 +42,7 @@ export enum IncidentStatus {
 export interface User {
   id: number | string;
   name: string;
-  role: string; // 'manager' | 'supervisor' | 'staff' | 'maintenance'
+  role: string; // 'manager' | 'supervisor' | 'staff' | 'admin'
   avatar?: string;
   email: string;
   password?: string;

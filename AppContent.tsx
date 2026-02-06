@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Login } from './pages/Login';
 import { Navigation } from './components/Navigation';
+import { Sidebar } from './components/Sidebar';
 import { QRScanner } from './components/QRScanner';
 import { AppRoutes } from './routes/AppRoutes';
 import { useAuth } from './contexts/AuthContext';
@@ -181,8 +182,8 @@ export default function AppContent() {
 
   const handleScanSuccess = (decodedText: string) => {
     const foundChecklist = checklists.find(c =>
-      c.area.id === decodedText &&
-      c.assignedTo === user?.id &&
+      String(c.area.id) === String(decodedText) &&
+      String(c.assignedTo) === String(user?.id) &&
       c.status === ChecklistStatus.PENDING
     );
 
@@ -192,7 +193,7 @@ export default function AppContent() {
       addNotification('Tìm thấy', `Đang mở checklist: ${foundChecklist.templateName}`, 'SUCCESS');
     } else {
       setShowScanner(false);
-      const hasArea = areas.some(a => a.id === decodedText);
+      const hasArea = areas.some(a => String(a.id) === String(decodedText));
       if (hasArea) {
         addNotification('Khu vực hợp lệ', 'Bạn không có checklist nào cần làm tại đây.', 'NORMAL');
       } else {
@@ -212,31 +213,55 @@ export default function AppContent() {
   }
 
   return (
-    <div className="max-w-md mx-auto bg-gray-50 min-h-screen shadow-2xl overflow-hidden relative">
-      <div className="pb-20">
-        <AppRoutes
-          currentTab={currentTab}
-          user={user}
-          users={users}
-          checklists={checklists}
-          incidents={incidents}
-          areas={areas}
-          templates={templates}
-          shifts={shifts}
-          activeChecklist={activeChecklist}
-          activeRunContext={activeRunContext}
-          actions={actions}
-        />
+    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row relative">
+
+      {/* Desktop Sidebar - Hidden on Mobile */}
+      {!activeChecklistId && (
+        <div className="hidden md:flex md:w-72 md:flex-col fixed top-0 left-0 bottom-0 z-40 h-screen">
+          <Sidebar
+            currentTab={currentTab}
+            onTabChange={setCurrentTab}
+            role={user.role}
+            user={user}
+            onLogout={handleLogout}
+            pendingReviewCount={0}
+          />
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${!activeChecklistId ? 'md:ml-72' : ''}`}>
+        <div className="flex-1 w-full mx-auto md:p-8">
+          {/* Mobile constraint only applies on small screens now */}
+          <div className="md:max-w-6xl md:mx-auto w-full pb-24 md:pb-0">
+            <AppRoutes
+              currentTab={currentTab}
+              user={user}
+              users={users}
+              checklists={checklists}
+              incidents={incidents}
+              areas={areas}
+              templates={templates}
+              shifts={shifts}
+              activeChecklist={activeChecklist}
+              activeRunContext={activeRunContext}
+              actions={actions}
+            />
+          </div>
+        </div>
       </div>
 
+      {/* Mobile Bottom Navigation - Hidden on Desktop */}
       {!activeChecklistId && (
-        <Navigation
-          currentTab={currentTab}
-          onTabChange={setCurrentTab}
-          role={user.role}
-          // Use pendingReviewCount if we want to add polling for it, currently dropped in simplification or use query
-          pendingReviewCount={0}
-        />
+        <div className="md:hidden">
+          <Navigation
+            currentTab={currentTab}
+            onTabChange={setCurrentTab}
+            role={user.role}
+            // Use pendingReviewCount if we want to add polling for it, currently dropped in simplification or use query
+            pendingReviewCount={0}
+          />
+        </div>
       )}
 
       {showScanner && (
@@ -247,14 +272,14 @@ export default function AppContent() {
       )}
 
       {/* Push Notification Container */}
-      <div className="fixed top-0 left-0 right-0 p-4 z-[9999] pointer-events-none flex flex-col items-center gap-2 max-w-md mx-auto">
+      <div className="fixed top-4 right-4 z-[9999] pointer-events-none flex flex-col items-end gap-2 w-full max-w-sm md:max-w-md px-4 md:px-0">
         {notifications.map((n) => (
           <div
             key={n.id}
-            className={`pointer-events-auto w-full max-w-sm rounded-2xl p-4 shadow-2xl border flex items-start gap-3 animate-in slide-in-from-top-5 fade-in duration-300 ${n.type === 'CRITICAL'
+            className={`pointer-events-auto w-full rounded-xl p-4 shadow-xl border flex items-start gap-3 animate-in slide-in-from-right-5 fade-in duration-300 ${n.type === 'CRITICAL'
               ? 'bg-red-600 text-white border-red-700'
               : n.type === 'SUCCESS'
-                ? 'bg-green-600 text-white border-green-700'
+                ? 'bg-emerald-600 text-white border-emerald-700'
                 : 'bg-white text-gray-800 border-gray-100'
               }`}
           >

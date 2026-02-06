@@ -21,12 +21,12 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
       items.push({ id: 'incidents', icon: AlertTriangle, label: 'Sự cố' });
     }
     
-    if (role === Role.MANAGER || role === Role.SUPERVISOR) {
+    if (role === Role.ADMIN || role === Role.MANAGER || role === Role.SUPERVISOR) {
       items.push({ id: 'reports', icon: PieChart, label: 'Báo cáo' });
     }
     
     // Update: Allow both MANAGER and SUPERVISOR to access Admin (content inside will vary)
-    if (role === Role.MANAGER || role === Role.SUPERVISOR) {
+    if (role === Role.ADMIN || role === Role.MANAGER || role === Role.SUPERVISOR) {
       items.push({ id: 'admin', icon: ShieldCheck, label: 'Quản trị' });
     } else {
       items.push({ id: 'settings', icon: Settings, label: 'Cài đặt' });
