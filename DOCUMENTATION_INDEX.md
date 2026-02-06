@@ -1,7 +1,7 @@
 # 📚 EcoCheck Tourism Ops - Documentation Index
 
-**Last Updated:** January 8, 2025  
-**System Status:** ✅ **PRODUCTION READY**
+**Last Updated:** February 3, 2026  
+**System Status:** ✅ **QA READY**
 
 ---
 
@@ -14,7 +14,7 @@ Start here: [Setup Instructions](#setup-instructions)
 Start here: [Architecture Overview](#architecture-overview)
 
 ### For Operations
-Start here: [Deployment Guide](DEPLOYMENT_GUIDE.md)
+Start here: [Deployment Guide](DEPLOYMENT_GUIDE.md) then [Operations Runbook](OPERATIONS_RUNBOOK.md)
 
 ### For Quality Assurance
 Start here: [Test Checklist](TEST_CHECKLIST.md)
@@ -31,14 +31,19 @@ Start here: [Test Checklist](TEST_CHECKLIST.md)
 - Quick start instructions
 - Feature overview
 
-#### 2. **AUDIT_COMPLETE.md** ⭐ **START HERE**
+#### 2. **BASELINE_AUDIT.md** - 2026 Baseline Snapshot
+- Hiện trạng hệ thống và chuẩn dữ liệu quan trọng
+- Tóm tắt workflow, API map, và rủi ro cần theo dõi
+- Kế hoạch hoàn thiện theo 3 mốc ưu tiên
+
+#### 3. **AUDIT_COMPLETE.md** ⭐ **START HERE**
 - Comprehensive audit results
 - All 11 features verified operational
 - System health confirmed
 - Production readiness confirmed
 - **Status: ✅ PRODUCTION READY**
 
-#### 3. **COMPREHENSIVE_AUDIT.md** - Detailed System Review
+#### 4. **COMPREHENSIVE_AUDIT.md** - Detailed System Review
 - In-depth architecture documentation
 - All 9 API services integration matrix
 - Feature implementation details (1000+ lines)
@@ -48,7 +53,7 @@ Start here: [Test Checklist](TEST_CHECKLIST.md)
 - Database schema details
 - Production readiness criteria
 
-#### 4. **INTEGRATION_TEST_REPORT.md** - Test Results
+#### 5. **INTEGRATION_TEST_REPORT.md** - Test Results
 - 8 feature area test results
 - API endpoint examples with curl commands
 - Data persistence verification
@@ -57,7 +62,7 @@ Start here: [Test Checklist](TEST_CHECKLIST.md)
 - Feature checklist
 - End-to-end test scenarios
 
-#### 5. **DEPLOYMENT_GUIDE.md** - Production Setup
+#### 6. **DEPLOYMENT_GUIDE.md** - Production Setup
 - Environment configuration
 - Backend deployment (Laravel)
 - Frontend deployment (Vercel)
@@ -67,7 +72,12 @@ Start here: [Test Checklist](TEST_CHECKLIST.md)
 - SSL/HTTPS configuration
 - Scaling considerations
 
-#### 6. **TEST_CHECKLIST.md** - QA Testing
+#### 7. **OPERATIONS_RUNBOOK.md** - Day-2 Operations
+- Quy trinh van hanh hang ngay
+- Logging, backup, va xu ly su co
+- Smoke test nhanh va kiem tra du lieu
+
+#### 8. **TEST_CHECKLIST.md** - QA Testing
 - 12 major test categories
 - 100+ test cases
 - Manual testing procedures
@@ -75,7 +85,11 @@ Start here: [Test Checklist](TEST_CHECKLIST.md)
 - Data persistence checks
 - Security validation tests
 
-#### 7. **SYSTEM_AUDIT.md** - Technical Audit
+#### 9. **UI_REGRESSION_CHECKLIST.md** - UI Regression
+- Checklist UI cho cac luong chinh sau khi deploy
+- Bao gom dashboard, checklist, review, incidents
+
+#### 10. **SYSTEM_AUDIT.md** - Technical Audit
 - API endpoints catalog
 - Data connectivity matrix
 - Feature verification checklist
@@ -107,7 +121,7 @@ npm run dev
 ```
 
 **3. Access Application:**
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:3001
 - Backend API: http://127.0.0.1:8000/api
 
 **4. Login:**
@@ -494,4 +508,3 @@ See [AUDIT_COMPLETE.md](AUDIT_COMPLETE.md) for detailed verification results.
 **Generated:** January 8, 2025  
 **System Version:** 1.0  
 **Status:** ✅ Production Ready
-

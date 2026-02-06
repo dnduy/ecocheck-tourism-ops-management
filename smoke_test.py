@@ -57,6 +57,9 @@ def run_test():
         runs = json_data
     else:
         runs = json_data.get('data', [])
+        # Handle Laravel Paginator structure where data is inside data['data']
+        if isinstance(runs, dict) and 'data' in runs:
+            runs = runs['data']
     
     run_id = None
     

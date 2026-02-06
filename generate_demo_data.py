@@ -160,10 +160,10 @@ def create_run(conn, template_id, area_id, assigned_user_id, verified_user_id, s
 
     cursor.execute("""
         INSERT INTO checklist_runs (
-            template_id, area_id, run_date, status, assigned_to, verified_by, created_at, updated_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            template_id, area_id, run_date, status, work_status, assigned_to, verified_by, created_at, updated_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """, (
-        template_id, area_id, scheduled_date.date(), db_status,
+        template_id, area_id, scheduled_date.date(), db_status, status,
         assigned_user_id, verified_user_id, created_at, now
     ))
 
@@ -245,10 +245,10 @@ def create_signoff(conn, run_id, verified_user_id, completed_at, session_id=None
 
     cursor.execute("""
         INSERT INTO run_signoffs (
-            run_id, session_id, role_id, signed_by, signed_at, note, created_at, updated_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            run_id, session_id, role_id, role, user_id, signed_by, signed_at, note, created_at, updated_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """, (
-        run_id, session_id, role_id, verified_user_id, signed_at, random.choice(notes), signed_at, signed_at
+        run_id, session_id, role_id, 'supervisor', verified_user_id, verified_user_id, signed_at, random.choice(notes), signed_at, signed_at
     ))
 
     cursor.close()
@@ -393,7 +393,7 @@ def generate_demo_data():
                 if rand < 0.5:
                     status = 'reviewed'
                 elif rand < 0.8:
-                    status = 'completed'
+                    status = 'completed' # Will map to 'completed' or 'needs_review'
                 else:
                     status = 'in_progress'
             elif days_ago == 1:
@@ -408,11 +408,23 @@ def generate_demo_data():
                 # Hôm nay và tương lai: tất cả pending để staff có thể làm việc
                 status = 'pending'
             
+            # specific mapping for demo:
+            # internal 'reviewed' -> DB work_status 'approved'
+            # internal 'completed' -> DB work_status 'needs_review' (to show in manager queue)
+            # internal 'in_progress' -> DB work_status 'in_progress'
+            # internal 'pending' -> DB work_status 'pending'
+            
+            db_work_status = status
+            if status == 'reviewed':
+                db_work_status = 'approved'
+            elif status == 'completed':
+                db_work_status = 'needs_review'
+            
             # Create run
             run_id, started_at, completed_at = create_run(
                 conn, template_id, area_id,
                 assigned_user['id'], verified_user['id'],
-                current_date, status
+                current_date, db_work_status
             )
             total_runs += 1
             day_runs += 1

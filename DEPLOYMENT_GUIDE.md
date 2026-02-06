@@ -302,6 +302,7 @@ CORS_ALLOWED_ORIGINS=https://yourdomain.com
 ---
 
 ## 📊 MONITORING & MAINTENANCE
+Tham khao runbook van hanh chi tiet tai `OPERATIONS_RUNBOOK.md`.
 
 ### Health Checks
 ```bash

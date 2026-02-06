@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_smoke:
+        description: "Run API smoke tests"
+        required: false
+        default: "false"
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: npm test
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo_sqlite
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Prepare env
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+      - name: Run tests
+        run: php artisan test
+
+  smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_smoke == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo_sqlite
+      - name: Backend dependencies
+        working-directory: backend-app
+        run: composer install --no-interaction --prefer-dist
+      - name: Prepare backend env
+        working-directory: backend-app
+        run: |
+          cp .env.example .env
+          php -r "file_exists('database/database.sqlite') || touch('database/database.sqlite');"
+          printf "\nDB_CONNECTION=sqlite\nDB_DATABASE=%s\n" "$(pwd)/database/database.sqlite" >> .env
+          php artisan key:generate
+          php artisan migrate --force
+          php artisan db:seed --class=RoleAndAdminSeeder
+          php artisan db:seed --class=SmokeTestSeeder
+      - name: Start backend
+        working-directory: backend-app
+        run: |
+          php artisan serve --host=127.0.0.1 --port=8000 > /tmp/laravel.log 2>&1 &
+          sleep 5
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+      - name: Frontend dependencies
+        run: npm ci
+      - name: Run smoke tests
+        env:
+          API_BASE_URL: http://127.0.0.1:8000/api
+          RUN_SMOKE_TESTS: "true"
+        run: npm run test:smoke
