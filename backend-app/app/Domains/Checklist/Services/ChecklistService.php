@@ -34,6 +34,7 @@ class ChecklistService
             'area_id' => $areaId,
             'run_date' => $date,
             'status' => 'open',
+            'work_status' => 'pending',
             'assigned_to' => $assignedTo,
             'created_by' => auth()->id(), // Also set created_by
         ]);

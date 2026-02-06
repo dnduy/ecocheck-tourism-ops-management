@@ -5,16 +5,25 @@ namespace App\Services;
 use App\Interfaces\RunServiceInterface;
 use App\Interfaces\Repositories\RunRepositoryInterface;
 use App\Interfaces\Repositories\SignoffRepositoryInterface;
-use App\Domains\Checklist\Models\ChecklistRun as Run;
-use App\Domains\User\Models\User;
-use App\Domains\Checklist\Models\ChecklistTemplate;
+use App\Models\Run;
+use App\Models\User;
+use App\Models\ChecklistTemplate;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use App\Support\RunAccess;
 
 class RunService implements RunServiceInterface
 {
     protected $runRepository;
     protected $signoffRepository;
+    protected const WORKFLOW_STATUSES = [
+        'pending',
+        'in_progress',
+        'completed',
+        'needs_review',
+        'approved',
+        'rejected',
+    ];
 
     public function __construct(
         RunRepositoryInterface $runRepository,
@@ -32,34 +41,58 @@ class RunService implements RunServiceInterface
     public function createRun(array $data, User $creator): Run
     {
         return DB::transaction(function () use ($data, $creator) {
-            // Use existing template or create default one
-            $template = ChecklistTemplate::first() ?? ChecklistTemplate::create([
-                'name' => 'Default',
-                'is_active' => true,
-            ]);
+            // Prefer active template for area; fallback to any template, then create default.
+            $template = ChecklistTemplate::where('area_id', $data['area_id'] ?? null)
+                ->where('is_active', true)
+                ->first()
+                ?? ChecklistTemplate::where('area_id', $data['area_id'] ?? null)->first()
+                ?? ChecklistTemplate::first()
+                ?? ChecklistTemplate::create([
+                    'area_id' => $data['area_id'],
+                    'name' => 'Default',
+                    'is_active' => true,
+                ]);
 
-            return $this->runRepository->create([
-                'template_id' => $data['checklist_template_id'] ?? $data['template_id'] ?? $template->id,
-                'area_id' => $data['area_id'],
-                'status' => 'open', // Enum: open, done
-                'work_status' => 'pending', // Workflow status
-                'run_date' => $data['scheduled_for'] ?? $data['date'] ?? now(),
-                'created_by' => $creator->id,
-            ]);
+            try {
+                $workStatus = 'pending';
+                return $this->runRepository->create([
+                    'template_id' => $data['checklist_template_id'] ?? $data['template_id'] ?? $template->id,
+                    'area_id' => $data['area_id'],
+                    'status' => $this->toLegacyStatus($workStatus), // Legacy mirror
+                    'work_status' => $workStatus, // Workflow status
+                    'run_date' => $data['scheduled_for'] ?? $data['date'] ?? now(),
+                    'created_by' => $creator->id,
+                ]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ($e->getCode() == 23000) { // Integrity constraint violation
+                    // Find existing run and return it
+                    $existingRun = Run::where('template_id', $data['checklist_template_id'] ?? $data['template_id'] ?? $template->id)
+                        ->where('area_id', $data['area_id'])
+                        ->whereDate('run_date', $data['scheduled_for'] ?? $data['date'] ?? now())
+                        ->first();
+
+                    if ($existingRun) {
+                        return $existingRun;
+                    }
+                }
+                throw $e;
+            }
         });
     }
 
     public function getRunDetail(Run $run): Run
     {
-        return $this->runRepository->loadRelations($run, [
+        $run = $this->runRepository->loadRelations($run, [
             'area',
             'template.groups.items',
+            'template.items',
             'template.columns' => fn($q) => $q->orderBy('sort_order'),
             'entries',
             'signoffs',
             'assignedUser',
             'verifiedUser'
         ]);
+        return $run;
     }
 
     public function updateRun(Run $run, array $data): Run
@@ -71,11 +104,13 @@ class RunService implements RunServiceInterface
             // Remove old signoffs
             $run->signoffs()->delete();
             // Reset status/timestamps to start fresh
-            $data['work_status'] = 'draft';
-            $data['status'] = 'open'; // Keep as open
+            $data['work_status'] = 'pending';
             $data['started_at'] = null;
             $data['completed_at'] = null;
+            $data['review_requested_at'] = null;
         }
+
+        $data = $this->syncStatusFields($data, $run);
 
         return $this->runRepository->update($run, $data);
     }
@@ -90,22 +125,32 @@ class RunService implements RunServiceInterface
 
     public function startWork(Run $run, User $user): Run
     {
+        if (!$user->hasRole('staff')) {
+            throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
+        }
+
         if ($run->assigned_to !== $user->id) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
 
-        if ($run->work_status !== 'pending') {
+        if (!in_array($run->work_status, ['pending', 'draft'], true)) {
             throw new \Exception('Checklist không ở trạng thái pending');
         }
 
+        $workStatus = 'in_progress';
         return $this->runRepository->update($run, [
-            'work_status' => 'in_progress',
+            'work_status' => $workStatus,
+            'status' => $this->toLegacyStatus($workStatus),
             'started_at' => now()
         ]);
     }
 
     public function completeWork(Run $run, User $user): Run
     {
+        if (!$user->hasRole('staff')) {
+            throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
+        }
+
         if ($run->assigned_to !== $user->id) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
@@ -114,14 +159,20 @@ class RunService implements RunServiceInterface
             throw new \Exception('Checklist phải ở trạng thái in_progress');
         }
 
+        $workStatus = 'completed';
         return $this->runRepository->update($run, [
-            'work_status' => 'completed',
+            'work_status' => $workStatus,
+            'status' => $this->toLegacyStatus($workStatus),
             'completed_at' => now()
         ]);
     }
 
     public function requestReview(Run $run, User $user): Run
     {
+        if (!$user->hasRole('staff')) {
+            throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
+        }
+
         if ($run->assigned_to !== $user->id) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
@@ -130,15 +181,17 @@ class RunService implements RunServiceInterface
             throw new \Exception('Chỉ có thể yêu cầu duyệt khi completed');
         }
 
+        $workStatus = 'needs_review';
         return $this->runRepository->update($run, [
-            'work_status' => 'needs_review',
+            'work_status' => $workStatus,
+            'status' => $this->toLegacyStatus($workStatus),
             'review_requested_at' => now()
         ]);
     }
 
     public function approveRun(Run $run, User $user, ?string $note): Run
     {
-        if ($run->verified_by !== $user->id && $user->role !== 'manager') {
+        if (!RunAccess::canApprove($user, $run)) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
 
@@ -150,13 +203,14 @@ class RunService implements RunServiceInterface
             // Update run status
             $this->runRepository->update($run, [
                 'work_status' => 'approved',
+                'status' => $this->toLegacyStatus('approved'),
                 'verified_by' => $user->id
             ]);
 
             // Create signoff using SignoffRepository
             $this->signoffRepository->create([
                 'run_id' => $run->id,
-                'role' => 'supervisor',
+                'role' => $user->getRoleNames()->first() ?? 'supervisor',
                 'user_id' => $user->id,
                 'review_status' => 'approved',
                 'review_note' => $note ?? '✅ Đã xác nhận',
@@ -171,7 +225,7 @@ class RunService implements RunServiceInterface
 
     public function rejectRun(Run $run, User $user, string $note): Run
     {
-        if ($run->verified_by !== $user->id && $user->role !== 'manager') {
+        if (!RunAccess::canApprove($user, $run)) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
 
@@ -181,12 +235,13 @@ class RunService implements RunServiceInterface
 
         return DB::transaction(function () use ($run, $user, $note) {
             $this->runRepository->update($run, [
-                'work_status' => 'rejected'
+                'work_status' => 'rejected',
+                'status' => $this->toLegacyStatus('rejected'),
             ]);
 
             $this->signoffRepository->create([
                 'run_id' => $run->id,
-                'role' => 'supervisor',
+                'role' => $user->getRoleNames()->first() ?? 'supervisor',
                 'user_id' => $user->id,
                 'review_status' => 'rejected',
                 'review_note' => $note,
@@ -201,6 +256,10 @@ class RunService implements RunServiceInterface
 
     public function resubmitRun(Run $run, User $user): Run
     {
+        if (!$user->hasRole('staff')) {
+            throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
+        }
+
         if ($run->assigned_to !== $user->id) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
@@ -209,22 +268,72 @@ class RunService implements RunServiceInterface
             throw new \Exception('Chỉ có thể gửi lại khi bị rejected');
         }
 
+        $workStatus = 'needs_review';
         return $this->runRepository->update($run, [
-            'work_status' => 'needs_review',
+            'work_status' => $workStatus,
+            'status' => $this->toLegacyStatus($workStatus),
             'review_requested_at' => now()
         ]);
     }
 
+    private function normalizeWorkStatus(?string $status): ?string
+    {
+        if (!$status) {
+            return null;
+        }
+
+        $status = strtolower($status);
+        $map = [
+            'open' => 'pending',
+            'draft' => 'pending',
+            'active' => 'in_progress',
+            'done' => 'completed',
+            'completed' => 'completed',
+            'pending' => 'pending',
+            'in_progress' => 'in_progress',
+            'needs_review' => 'needs_review',
+            'approved' => 'approved',
+            'rejected' => 'rejected',
+        ];
+
+        return $map[$status] ?? $status;
+    }
+
+    private function syncStatusFields(array $data, ?Run $run = null): array
+    {
+        if (array_key_exists('work_status', $data) && $data['work_status']) {
+            $data['work_status'] = $this->normalizeWorkStatus($data['work_status']);
+            $data['status'] = $this->toLegacyStatus($data['work_status']);
+            return $data;
+        }
+
+        if (array_key_exists('status', $data) && $data['status']) {
+            $data['work_status'] = $this->normalizeWorkStatus($data['status']);
+            $data['status'] = $this->toLegacyStatus($data['work_status']);
+            return $data;
+        }
+
+        if ($run && $run->work_status) {
+            $legacyStatus = $this->toLegacyStatus($run->work_status);
+            if ($run->status !== $legacyStatus) {
+                $data['status'] = $legacyStatus;
+            }
+        }
+
+        return $data;
+    }
+
+    private function toLegacyStatus(?string $workStatus): string
+    {
+        $workStatus = $this->normalizeWorkStatus($workStatus) ?? 'pending';
+        return in_array($workStatus, ['completed', 'needs_review', 'approved'], true) ? 'done' : 'open';
+    }
+
     public function getPendingReviews(User $user, int $perPage): LengthAwarePaginator
     {
-        // Using existing Repository method which returns Collection, need to ensure Paginator if expected
-        // The repository method `getPendingReviewsByVerifier` currently returns `Collection` (get()).
-        // This Service method expects Paginator. I need to update Repository to support pagination for this specific call or handle it here.
-        // Actually the Controller used paginate(20). 
-        // I should update RunRepository to have a proper `getPendingReviewsByVerifierPaginated`.
-
-        // For now let's implement the query here or add method to Repo. Adding method to Repo is "cleaner".
-        // To save steps I will modify Repo in next step. Here I write assumption it returns paginator or I fix logic.
+        if (RunAccess::isAdminOrManager($user)) {
+            return $this->runRepository->getAllPendingReviewsPaginated($perPage);
+        }
 
         return $this->runRepository->getPendingReviewsPaginated($user->id, $perPage);
     }

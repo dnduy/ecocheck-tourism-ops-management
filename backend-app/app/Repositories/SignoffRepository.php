@@ -3,7 +3,7 @@
 namespace App\Repositories;
 
 use App\Interfaces\Repositories\SignoffRepositoryInterface;
-use App\Domains\Checklist\Models\RunSignoff as Signoff;
+use App\Models\Signoff;
 
 class SignoffRepository implements SignoffRepositoryInterface
 {

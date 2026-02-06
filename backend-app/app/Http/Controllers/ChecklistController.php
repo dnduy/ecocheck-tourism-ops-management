@@ -64,7 +64,8 @@ class ChecklistController extends Controller
                     'checklist_template_id' => $templateId,
                     'area_id' => $areaId,
                     'scheduled_for' => $currentDate,
-                    'status' => 'pending',
+                    'status' => 'open',
+                    'work_status' => 'pending',
                     'assigned_to' => auth()->id() ?? 1,
                 ]);
 

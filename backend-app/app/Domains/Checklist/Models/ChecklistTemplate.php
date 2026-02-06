@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ChecklistTemplate extends Model
 {
-    protected $fillable = ['area_id', 'name', 'orientation', 'is_active'];
+    protected $fillable = ['area_id', 'name', 'description', 'version', 'orientation', 'is_active'];
 
     protected $casts = [
         'is_active' => 'boolean',

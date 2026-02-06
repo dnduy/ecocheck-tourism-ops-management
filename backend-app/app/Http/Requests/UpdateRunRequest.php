@@ -14,7 +14,7 @@ class UpdateRunRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['nullable', 'in:draft,active,completed'],
+            'status' => ['nullable', 'in:pending,in_progress,completed,needs_review,approved,rejected,open,done,draft,active'],
             'started_at' => ['nullable', 'date'],
             'completed_at' => ['nullable', 'date'],
             'assigned_to' => ['nullable', 'exists:users,id'],

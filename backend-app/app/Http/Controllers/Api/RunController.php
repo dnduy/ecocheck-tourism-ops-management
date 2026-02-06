@@ -38,8 +38,34 @@ class RunController extends Controller
 
     public function show(Run $run): JsonResponse
     {
+        $user = request()->user();
+        if ($user && !\App\Support\RunAccess::canView($user, $run)) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
         $run = $this->runService->getRunDetail($run);
-        return $this->successResponse($run, 'Lấy chi tiết checklist thành công');
+        $items = collect();
+
+        if ($run->relationLoaded('template') && $run->template) {
+            $groupedItems = collect();
+            if ($run->template->relationLoaded('groups')) {
+                foreach ($run->template->groups as $group) {
+                    if ($group->relationLoaded('items')) {
+                        $groupedItems = $groupedItems->merge($group->items);
+                    }
+                }
+            }
+            $ungroupedItems = $run->template->relationLoaded('items')
+                ? $run->template->items->whereNull('group_id')
+                : collect();
+
+            $items = $groupedItems->merge($ungroupedItems)->values();
+        }
+
+        $payload = $run->toArray();
+        $payload['items'] = $items;
+
+        return $this->successResponse($payload, 'Lấy chi tiết checklist thành công');
     }
 
     public function update(UpdateRunRequest $request, Run $run): JsonResponse

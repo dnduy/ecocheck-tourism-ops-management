@@ -8,7 +8,7 @@ class CreateAreaRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user() && $this->user()->role === 'manager';
+        return $this->user() && $this->user()->hasAnyRole(['admin', 'manager']);
     }
 
     public function rules(): array

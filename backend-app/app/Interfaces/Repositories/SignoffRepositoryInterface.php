@@ -2,7 +2,7 @@
 
 namespace App\Interfaces\Repositories;
 
-use App\Domains\Checklist\Models\RunSignoff as Signoff;
+use App\Models\Signoff;
 
 interface SignoffRepositoryInterface
 {

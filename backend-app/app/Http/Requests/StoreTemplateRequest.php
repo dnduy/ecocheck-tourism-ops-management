@@ -17,6 +17,7 @@ class StoreTemplateRequest extends FormRequest
             $isUpdate = $this->isMethod('PUT');
             
             return [
+                'area_id' => ['required', 'exists:areas,id'],
                 'name' => ['required', 'string', 'max:255'],
                 'description' => ['nullable', 'string'],
                 'groups' => ['nullable', 'array'],

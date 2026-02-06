@@ -5,7 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use App\Models\Area;
+use App\Models\Item;
 
 class ChecklistTemplate extends Model
 {
@@ -14,6 +17,7 @@ class ChecklistTemplate extends Model
     protected $table = 'checklist_templates';
 
     protected $fillable = [
+        'area_id',
         'name',
         'description',
         'version',
@@ -27,6 +31,16 @@ class ChecklistTemplate extends Model
     public function groups(): HasMany
     {
         return $this->hasMany(Group::class, 'template_id');
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(Item::class, 'template_id');
+    }
+
+    public function area(): BelongsTo
+    {
+        return $this->belongsTo(Area::class);
     }
 
     public function columns(): HasMany

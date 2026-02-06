@@ -2,7 +2,7 @@
 
 namespace App\Domains\Checklist\Models;
 
-use App\Domains\User\Models\User;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;

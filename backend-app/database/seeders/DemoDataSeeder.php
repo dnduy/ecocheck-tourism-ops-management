@@ -15,6 +15,7 @@ use App\Models\Entry;
 use App\Models\Signoff;
 use App\Models\TemplateColumn;
 use Carbon\Carbon;
+use Spatie\Permission\Models\Role;
 
 class DemoDataSeeder extends Seeder
 {
@@ -23,25 +24,34 @@ class DemoDataSeeder extends Seeder
         // 1. Create Users
         $this->command->info('Creating Users...');
 
+        Role::findOrCreate('admin', 'sanctum');
+        Role::findOrCreate('manager', 'sanctum');
+        Role::findOrCreate('supervisor', 'sanctum');
+        Role::findOrCreate('staff', 'sanctum');
+
         $admin = User::firstOrCreate(
             ['email' => 'admin@ecocheck.com'],
-            ['name' => 'System Admin', 'password' => Hash::make('password'), 'role' => 'manager']
+            ['name' => 'System Admin', 'password' => Hash::make('password')]
         );
+        $admin->syncRoles(['admin']);
 
         $manager = User::firstOrCreate(
             ['email' => 'manager@ecocheck.com'],
-            ['name' => 'Operations Manager', 'password' => Hash::make('password'), 'role' => 'manager']
+            ['name' => 'Operations Manager', 'password' => Hash::make('password')]
         );
+        $manager->syncRoles(['manager']);
 
         $supervisor = User::firstOrCreate(
             ['email' => 'supervisor@ecocheck.com'],
-            ['name' => 'Shift Supervisor', 'password' => Hash::make('password'), 'role' => 'supervisor']
+            ['name' => 'Shift Supervisor', 'password' => Hash::make('password')]
         );
+        $supervisor->syncRoles(['supervisor']);
 
         $staff = User::firstOrCreate(
             ['email' => 'staff@ecocheck.com'],
-            ['name' => 'Staff User', 'password' => Hash::make('password'), 'role' => 'staff']
+            ['name' => 'Staff User', 'password' => Hash::make('password')]
         );
+        $staff->syncRoles(['staff']);
 
         // 2. Create Area
         $this->command->info('Creating Area...');

@@ -4,7 +4,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Domains\Checklist\Models\ChecklistRun as Run;
+use App\Models\Run;
 use App\Interfaces\RunServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,7 +50,7 @@ class ReviewController extends Controller
         // I will add this check here or assume middleware handles it? No, explicit check is better.
 
         $user = $request->user();
-        if ($run->verified_by !== $user->id && $user->role !== 'manager') {
+        if (!$user || !\App\Support\RunAccess::canApprove($user, $run)) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 

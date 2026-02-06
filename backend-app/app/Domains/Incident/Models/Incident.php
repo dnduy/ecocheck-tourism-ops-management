@@ -4,7 +4,7 @@ namespace App\Domains\Incident\Models;
 
 use App\Domains\Checklist\Models\Area;
 use App\Domains\Checklist\Models\ChecklistRun;
-use App\Domains\User\Models\User;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 

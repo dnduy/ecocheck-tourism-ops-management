@@ -3,11 +3,12 @@
 namespace App\Repositories;
 
 use App\Interfaces\Repositories\RunRepositoryInterface;
-use App\Domains\Checklist\Models\ChecklistRun as Run;
+use App\Models\Run;
 use Illuminate\Support\Collection;
 
 class RunRepository implements RunRepositoryInterface
 {
+
     public function getRunsByAssignee(int $userId): Collection
     {
         return Run::where('assigned_to', $userId)
@@ -45,7 +46,7 @@ class RunRepository implements RunRepositoryInterface
         return Run::query();
     }
 
-    public function getAll(array $filters = [], ?\App\Domains\User\Models\User $user = null, int $perPage = 50)
+    public function getAll(array $filters = [], ?\App\Models\User $user = null, int $perPage = 50)
     {
         $query = $this->startQuery()->with([
             'area',
@@ -61,7 +62,25 @@ class RunRepository implements RunRepositoryInterface
             $query->where('area_id', $filters['area_id']);
         }
         if (isset($filters['status'])) {
-            $query->where('status', $filters['status']);
+            $status = strtolower($filters['status']);
+            $map = [
+                'open' => 'pending',
+                'draft' => 'pending',
+                'active' => 'in_progress',
+                'done' => 'completed',
+                'completed' => 'completed',
+                'pending' => 'pending',
+                'in_progress' => 'in_progress',
+                'needs_review' => 'needs_review',
+                'approved' => 'approved',
+                'rejected' => 'rejected',
+            ];
+            $normalized = $map[$status] ?? $status;
+            if (in_array($normalized, ['pending', 'in_progress', 'completed', 'needs_review', 'approved', 'rejected'], true)) {
+                $query->where('work_status', $normalized);
+            } else {
+                $query->where('status', $status);
+            }
         }
         if (isset($filters['date'])) {
             $query->whereDate('run_date', $filters['date']);
@@ -69,9 +88,9 @@ class RunRepository implements RunRepositoryInterface
 
         // Role-based filtering
         if ($user) {
-            if ($user->role === 'staff') {
+            if ($user->hasRole('staff')) {
                 $query->where('assigned_to', $user->id);
-            } elseif ($user->role === 'supervisor') {
+            } elseif ($user->hasRole('supervisor')) {
                 $query->where(function ($q) use ($user) {
                     $q->where('verified_by', $user->id)
                         ->orWhere('assigned_to', $user->id);
@@ -108,6 +127,20 @@ class RunRepository implements RunRepositoryInterface
     {
         return Run::where('verified_by', $verifierId)
             ->where('work_status', 'needs_review')
+            ->with([
+                'area',
+                'template',
+                'assignedUser',
+                'verifiedUser',
+                'signoffs.user'
+            ])
+            ->orderByDesc('review_requested_at')
+            ->paginate($perPage);
+    }
+
+    public function getAllPendingReviewsPaginated(int $perPage): \Illuminate\Pagination\LengthAwarePaginator
+    {
+        return Run::where('work_status', 'needs_review')
             ->with([
                 'area',
                 'template',

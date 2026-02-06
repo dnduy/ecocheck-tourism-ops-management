@@ -53,12 +53,13 @@ class TemplateController extends Controller
         $request->validate([
             'file' => 'required|file|mimes:xlsx,xls,csv',
             'name' => 'required|string|max:255',
-            'description' => 'nullable|string'
+            'description' => 'nullable|string',
+            'area_id' => 'required|exists:areas,id'
         ]);
 
         try {
             $templates = $this->templateService->importTemplate(
-                $request->only(['name', 'description']),
+                $request->only(['name', 'description', 'area_id']),
                 $request->file('file')
             );
             return $this->successResponse($templates, 'Import template thành công', 201);

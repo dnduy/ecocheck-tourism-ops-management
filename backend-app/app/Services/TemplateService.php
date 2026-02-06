@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Interfaces\TemplateServiceInterface;
 use App\Interfaces\Repositories\TemplateRepositoryInterface;
 use App\Models\ChecklistTemplate;
+use App\Models\Area;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -30,7 +31,13 @@ class TemplateService implements TemplateServiceInterface
     public function createTemplate(array $data): ChecklistTemplate
     {
         return DB::transaction(function () use ($data) {
+            $areaId = $data['area_id'] ?? Area::query()->value('id');
+            if (!$areaId) {
+                throw new \InvalidArgumentException('Không tìm thấy khu vực để gắn template.');
+            }
+
             $template = $this->templateRepository->create([
+                'area_id' => $areaId,
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
                 'version' => $data['version'] ?? 'v1',
@@ -195,7 +202,13 @@ class TemplateService implements TemplateServiceInterface
                 // But here we have multiple. Let's append index if needed, or just use detected title.
                 $finalName = mb_substr($sheetTitle, 0, 250);
 
+                $areaId = $data['area_id'] ?? Area::query()->value('id');
+                if (!$areaId) {
+                    throw new \InvalidArgumentException('Không tìm thấy khu vực để gắn template.');
+                }
+
                 $template = $this->templateRepository->create([
+                    'area_id' => $areaId,
                     'name' => $finalName,
                     'description' => 'Imported Checkist',
                     'version' => 'v1',
