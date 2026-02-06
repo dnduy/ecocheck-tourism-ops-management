@@ -3,7 +3,7 @@
 namespace App\Domains\Admin\Http\Controllers;
 
 use App\Domains\Checklist\Models\ChecklistRun;
-use App\Domains\User\Models\User;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class StatsController
@@ -14,13 +14,13 @@ class StatsController
     public function staffStats()
     {
         $stats = [
-            'total_staff' => User::where('role', 'staff')->count(),
-            'staff_with_runs' => User::where('role', 'staff')
+            'total_staff' => User::role('staff')->count(),
+            'staff_with_runs' => User::role('staff')
                 ->whereHas('assignedRuns')
                 ->count(),
             'total_runs' => ChecklistRun::count(),
-            'completed_runs' => ChecklistRun::where('status', 'done')->count(),
-            'pending_runs' => ChecklistRun::where('status', 'open')->count(),
+            'completed_runs' => ChecklistRun::whereIn('work_status', ['completed', 'needs_review', 'approved'])->count(),
+            'pending_runs' => ChecklistRun::whereIn('work_status', ['pending', 'in_progress'])->count(),
             'completion_rate' => $this->getCompletionRate(),
             'staff_by_area' => $this->getStaffByArea(),
         ];
@@ -34,8 +34,8 @@ class StatsController
     public function supervisorStats()
     {
         $stats = [
-            'total_supervisors' => User::where('role', 'supervisor')->count(),
-            'supervisors_with_signoffs' => User::where('role', 'supervisor')
+            'total_supervisors' => User::role('supervisor')->count(),
+            'supervisors_with_signoffs' => User::role('supervisor')
                 ->whereHas('signoffs')
                 ->count(),
             'total_signoffs' => DB::table('run_signoffs')->count(),
@@ -56,7 +56,7 @@ class StatsController
         if ($total === 0) {
             return 0;
         }
-        $completed = ChecklistRun::where('status', 'done')->count();
+        $completed = ChecklistRun::whereIn('work_status', ['completed', 'needs_review', 'approved'])->count();
         return round(($completed / $total) * 100, 2);
     }
 
@@ -112,7 +112,7 @@ class StatsController
     private function getQualityMetrics(): array
     {
         $runs = ChecklistRun::count();
-        $completed = ChecklistRun::where('status', 'done')->count();
+        $completed = ChecklistRun::whereIn('work_status', ['completed', 'needs_review', 'approved'])->count();
         $signed = DB::table('run_signoffs')->count();
 
         return [

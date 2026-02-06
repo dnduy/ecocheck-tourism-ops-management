@@ -2,7 +2,7 @@
 
 namespace App\Domains\User\Http\Controllers;
 
-use App\Domains\User\Models\User;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -26,9 +26,16 @@ class AuthController
 
         $token = $user->createToken('api-token')->plainTextToken;
 
+        $roleName = $user->getRoleNames()->first();
+
         return response()->json([
             'token' => $token,
-            'user' => $user->only(['id', 'name', 'email', 'role']),
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $roleName,
+            ],
         ]);
     }
 
@@ -41,8 +48,16 @@ class AuthController
 
     public function me(Request $request)
     {
+        $user = $request->user();
+        $roleName = $user?->getRoleNames()->first();
+
         return response()->json([
-            'user' => $request->user()->only(['id', 'name', 'email', 'role']),
+            'user' => [
+                'id' => $user?->id,
+                'name' => $user?->name,
+                'email' => $user?->email,
+                'role' => $roleName,
+            ],
         ]);
     }
 }

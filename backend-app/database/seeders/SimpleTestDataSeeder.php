@@ -6,6 +6,8 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
+use App\Models\User;
+use Spatie\Permission\Models\Role;
 
 class SimpleTestDataSeeder extends Seeder
 {
@@ -60,6 +62,8 @@ class SimpleTestDataSeeder extends Seeder
             $this->command->info('✅ Created ' . count($incidents) . ' incidents');
             
             DB::commit();
+
+            $this->call(SpatieRoleSeeder::class);
             
             $this->command->info('');
             $this->command->info('🎉 Test data generation complete!');
@@ -76,51 +80,40 @@ class SimpleTestDataSeeder extends Seeder
     private function createUsers(): array
     {
         $users = [];
+
+        foreach (['admin', 'manager', 'supervisor', 'staff'] as $role) {
+            Role::findOrCreate($role, 'sanctum');
+        }
         
         // Manager
-        $users['manager'] = DB::table('users')->insertGetId([
+        $manager = User::create([
             'name' => 'Manager Test',
             'email' => 'manager@test.com',
             'password' => Hash::make('password'),
-            'role' => 'manager',
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
+        $manager->assignRole('manager');
+        $users['manager'] = $manager->id;
         
         // Supervisors
         for ($i = 1; $i <= 3; $i++) {
-            $users["supervisor$i"] = DB::table('users')->insertGetId([
+            $supervisor = User::create([
                 'name' => "Supervisor $i",
                 'email' => "supervisor$i@test.com",
                 'password' => Hash::make('password'),
-                'role' => 'supervisor',
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
+            $supervisor->assignRole('supervisor');
+            $users["supervisor$i"] = $supervisor->id;
         }
         
         // Staff
         for ($i = 1; $i <= 5; $i++) {
-            $users["staff$i"] = DB::table('users')->insertGetId([
+            $staff = User::create([
                 'name' => "Staff $i",
                 'email' => "staff$i@test.com",
                 'password' => Hash::make('password'),
-                'role' => 'staff',
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
-        }
-        
-        // Maintenance
-        for ($i = 1; $i <= 2; $i++) {
-            $users["maintenance$i"] = DB::table('users')->insertGetId([
-                'name' => "Maintenance $i",
-                'email' => "maintenance$i@test.com",
-                'password' => Hash::make('password'),
-                'role' => 'maintenance',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $staff->assignRole('staff');
+            $users["staff$i"] = $staff->id;
         }
         
         return $users;
@@ -380,6 +373,8 @@ class SimpleTestDataSeeder extends Seeder
             $daysAgo = rand(0, 10);
             $createdAt = Carbon::today()->subDays($daysAgo)->setTime(rand(8, 16), rand(0, 59));
             
+            $staffKey = 'staff' . rand(1, 5);
+
             $incidentId = DB::table('incidents')->insertGetId([
                 'area_id' => $run['template_id'] ? DB::table('checklist_templates')->where('id', $run['template_id'])->value('area_id') : $areas[0],
                 'run_id' => $run['id'],
@@ -389,7 +384,7 @@ class SimpleTestDataSeeder extends Seeder
                 'status' => $status,
                 'priority' => $severity,
                 'reported_by' => $run['assigned_to'],
-                'assigned_to' => $users['maintenance1'],
+                'assigned_to' => $users[$staffKey],
                 'occurred_at' => $createdAt,
                 'resolved_at' => in_array($status, ['resolved', 'closed']) ? $createdAt->copy()->addHours(rand(2, 24)) : null,
                 'resolution_note' => in_array($status, ['resolved', 'closed']) ? 'Fixed successfully' : null,
@@ -425,7 +420,6 @@ class SimpleTestDataSeeder extends Seeder
                 ['Manager', 'manager@test.com'],
                 ['Supervisor', 'supervisor1-3@test.com'],
                 ['Staff', 'staff1-5@test.com'],
-                ['Maintenance', 'maintenance1-2@test.com'],
             ]
         );
         $this->command->info('🌐 Access: http://localhost:5173');

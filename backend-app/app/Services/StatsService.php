@@ -24,14 +24,14 @@ class StatsService implements StatsServiceInterface
     }
 
     /**
-     * Get statistics for staff users (staff and maintenance roles).
+     * Get statistics for staff users.
      *
      * @return Collection
      */
     public function getStaffStats(): Collection
     {
         // Lấy tất cả staff users
-        $staffUsers = $this->userRepository->getStaffAndMaintenanceUsers();
+        $staffUsers = $this->userRepository->getStaffUsers();
 
         return $staffUsers->map(function ($user) {
             // Lấy tất cả runs được gán cho nhân viên này
@@ -45,7 +45,7 @@ class StatsService implements StatsServiceInterface
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                'role' => $user->role,
+                'role' => $user->getRoleNames()->first(),
                 'area' => $area,
                 'stats' => [
                     'pending' => $runs->where('work_status', 'pending')->count(),
@@ -121,7 +121,7 @@ class StatsService implements StatsServiceInterface
                 'id' => $staff->id,
                 'name' => $staff->name,
                 'email' => $staff->email,
-                'role' => $staff->role,
+                'role' => $staff->getRoleNames()->first(),
             ],
             'runs' => $runs->map(function ($run) {
                 $latestSignoff = $run->signoffs?->sortByDesc('reviewed_at')->first();

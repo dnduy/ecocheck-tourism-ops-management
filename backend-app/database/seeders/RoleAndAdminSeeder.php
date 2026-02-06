@@ -3,26 +3,27 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use App\Models\Role;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 
 class RoleAndAdminSeeder extends Seeder
 {
     public function run(): void
     {
-        $roles = ['manager', 'supervisor', 'staff', 'maintenance'];
+        $roles = ['admin', 'manager', 'supervisor', 'staff'];
         foreach ($roles as $role) {
-            Role::firstOrCreate(['name' => $role]);
+            Role::findOrCreate($role, 'sanctum');
         }
 
-        User::firstOrCreate(
+        $admin = User::firstOrCreate(
             ['email' => 'admin@local.test'],
             [
                 'name' => 'Admin',
                 'password' => Hash::make('ChangeMe123!'),
-                'role' => 'manager',
             ]
         );
+
+        $admin->syncRoles(['admin']);
     }
 }

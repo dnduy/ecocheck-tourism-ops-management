@@ -2,7 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Domains\User\Models\User;
+use App\Models\User;
+use Spatie\Permission\Models\Role;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -10,43 +11,39 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        // Create default manager
-        User::firstOrCreate(
+        $roles = ['admin', 'manager', 'supervisor', 'staff'];
+        foreach ($roles as $role) {
+            Role::findOrCreate($role, 'sanctum');
+        }
+
+        // Create default admin
+        $admin = User::firstOrCreate(
             ['email' => 'admin@local.test'],
             [
                 'name' => 'System Administrator',
                 'password' => Hash::make('ChangeMe123!'),
-                'role' => 'manager',
             ]
         );
+        $admin->syncRoles(['admin']);
 
         // Create additional test users
-        User::firstOrCreate(
+        $supervisor = User::firstOrCreate(
             ['email' => 'supervisor@local.test'],
             [
                 'name' => 'Test Supervisor',
                 'password' => Hash::make('password123'),
-                'role' => 'supervisor',
             ]
         );
+        $supervisor->syncRoles(['supervisor']);
 
-        User::firstOrCreate(
+        $staff = User::firstOrCreate(
             ['email' => 'staff@local.test'],
             [
                 'name' => 'Test Staff',
                 'password' => Hash::make('password123'),
-                'role' => 'staff',
             ]
         );
-
-        User::firstOrCreate(
-            ['email' => 'maintenance@local.test'],
-            [
-                'name' => 'Test Maintenance',
-                'password' => Hash::make('password123'),
-                'role' => 'maintenance',
-            ]
-        );
+        $staff->syncRoles(['staff']);
 
         $this->command->info('Default users created successfully!');
     }

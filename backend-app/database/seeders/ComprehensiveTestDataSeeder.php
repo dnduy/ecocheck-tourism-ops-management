@@ -6,6 +6,8 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Carbon\Carbon;
+use App\Models\User;
+use Spatie\Permission\Models\Role;
 
 class ComprehensiveTestDataSeeder extends Seeder
 {
@@ -49,6 +51,8 @@ class ComprehensiveTestDataSeeder extends Seeder
             $this->command->info('✅ Created ' . count($incidents) . ' incidents');
             
             DB::commit();
+
+            $this->call(SpatieRoleSeeder::class);
             
             $this->command->info('');
             $this->command->info('🎉 Test data generation complete!');
@@ -74,51 +78,40 @@ class ComprehensiveTestDataSeeder extends Seeder
     private function createUsers(): array
     {
         $users = [];
+
+        foreach (['admin', 'manager', 'supervisor', 'staff'] as $role) {
+            Role::findOrCreate($role, 'sanctum');
+        }
         
         // Manager (admin)
-        $users['manager'] = DB::table('users')->insertGetId([
+        $manager = User::create([
             'name' => 'System Manager',
             'email' => 'manager@test.com',
             'password' => Hash::make('password'),
-            'role' => 'manager',
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
+        $manager->assignRole('manager');
+        $users['manager'] = $manager->id;
         
         // Supervisors (3 người)
         for ($i = 1; $i <= 3; $i++) {
-            $users["supervisor$i"] = DB::table('users')->insertGetId([
+            $supervisor = User::create([
                 'name' => "Supervisor $i",
                 'email' => "supervisor$i@test.com",
                 'password' => Hash::make('password'),
-                'role' => 'supervisor',
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
+            $supervisor->assignRole('supervisor');
+            $users["supervisor$i"] = $supervisor->id;
         }
         
         // Staff (5 người)
         for ($i = 1; $i <= 5; $i++) {
-            $users["staff$i"] = DB::table('users')->insertGetId([
+            $staff = User::create([
                 'name' => "Staff Member $i",
                 'email' => "staff$i@test.com",
                 'password' => Hash::make('password'),
-                'role' => 'staff',
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
-        }
-        
-        // Maintenance (2 người)
-        for ($i = 1; $i <= 2; $i++) {
-            $users["maintenance$i"] = DB::table('users')->insertGetId([
-                'name' => "Maintenance Worker $i",
-                'email' => "maintenance$i@test.com",
-                'password' => Hash::make('password'),
-                'role' => 'maintenance',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $staff->assignRole('staff');
+            $users["staff$i"] = $staff->id;
         }
         
         return $users;
@@ -431,8 +424,8 @@ class ComprehensiveTestDataSeeder extends Seeder
             // Chọn run ngẫu nhiên có entries (not_ok)
             $runWithIssue = collect($runs)->where('status', '!=', 'pending')->random();
             
-            // Assign to maintenance staff
-            $maintenanceKey = 'maintenance' . rand(1, 2);
+            // Assign to staff
+            $staffKey = 'staff' . rand(1, 5);
             
             $daysAgo = rand(0, 10);
             $createdAt = Carbon::today()->subDays($daysAgo)->setTime(rand(8, 16), rand(0, 59));
@@ -446,7 +439,7 @@ class ComprehensiveTestDataSeeder extends Seeder
                 'status' => $status,
                 'priority' => $this->getPriorityForSeverity($severity),
                 'reported_by' => $runWithIssue['assigned_to'],
-                'assigned_to' => $users[$maintenanceKey],
+                'assigned_to' => $users[$staffKey],
                 'occurred_at' => $createdAt,
                 'resolved_at' => in_array($status, ['resolved', 'closed']) ? $createdAt->copy()->addHours(rand(2, 24)) : null,
                 'resolution_note' => in_array($status, ['resolved', 'closed']) ? 'Issue resolved successfully' : null,
@@ -495,7 +488,7 @@ class ComprehensiveTestDataSeeder extends Seeder
     
     private function getIncidentDescription(string $severity): string
     {
-        return "Issue reported during routine inspection. Severity level: $severity. Requires immediate attention from maintenance team.";
+        return "Issue reported during routine inspection. Severity level: $severity. Requires immediate attention from operations team.";
     }
     
     private function getPriorityForSeverity(string $severity): string
@@ -520,7 +513,6 @@ class ComprehensiveTestDataSeeder extends Seeder
                 ['Manager', 'manager@test.com', 'password'],
                 ['Supervisor', 'supervisor1-3@test.com', 'password'],
                 ['Staff', 'staff1-5@test.com', 'password'],
-                ['Maintenance', 'maintenance1-2@test.com', 'password'],
             ]
         );
         $this->command->info('');

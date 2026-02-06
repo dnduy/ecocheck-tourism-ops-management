@@ -7,7 +7,7 @@ use Illuminate\Support\Collection;
 interface StatsServiceInterface
 {
     /**
-     * Get statistics for staff users (staff and maintenance roles).
+     * Get statistics for staff users.
      *
      * @return Collection
      */

@@ -2,23 +2,34 @@
 
 namespace App\Domains\User\Http\Controllers;
 
-use App\Domains\User\Models\User;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Spatie\Permission\Models\Role;
 
 class UserController
 {
     public function index()
     {
-        $users = User::select('id', 'name', 'email', 'role')->get();
-        return response()->json($users);
+        $users = User::with('roles')->get();
+        return response()->json($users->map(fn ($u) => [
+            'id' => $u->id,
+            'name' => $u->name,
+            'email' => $u->email,
+            'role' => $u->getRoleNames()->first(),
+        ]));
     }
 
     public function show(int $id)
     {
-        $user = User::findOrFail($id);
-        return response()->json($user->only(['id', 'name', 'email', 'role']));
+        $user = User::with('roles')->findOrFail($id);
+        return response()->json([
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->getRoleNames()->first(),
+        ]);
     }
 
     public function store(Request $request)
@@ -34,10 +45,16 @@ class UserController
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
-            'role' => $validated['role'],
         ]);
+        Role::findOrCreate($validated['role'], 'sanctum');
+        $user->syncRoles([$validated['role']]);
 
-        return response()->json($user->only(['id', 'name', 'email', 'role']), 201);
+        return response()->json([
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->getRoleNames()->first(),
+        ], 201);
     }
 
     public function update(Request $request, int $id)
@@ -66,12 +83,18 @@ class UserController
             $user->password = Hash::make($validated['password']);
         }
         if (isset($validated['role'])) {
-            $user->role = $validated['role'];
+            Role::findOrCreate($validated['role'], 'sanctum');
+            $user->syncRoles([$validated['role']]);
         }
 
         $user->save();
 
-        return response()->json($user->only(['id', 'name', 'email', 'role']));
+        return response()->json([
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->getRoleNames()->first(),
+        ]);
     }
 
     public function destroy(int $id)
@@ -95,4 +118,3 @@ class UserController
         });
     }
 }
-
