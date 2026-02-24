@@ -16,6 +16,8 @@ class CreateRunRequest extends FormRequest
         return [
             'area_id' => 'required|exists:areas,id',
             'date' => 'required|date',
+            'template_id' => 'nullable|exists:checklist_templates,id',
+            'session_id' => 'nullable|exists:template_sessions,id',
             'assigned_to' => 'nullable|exists:users,id',
         ];
     }

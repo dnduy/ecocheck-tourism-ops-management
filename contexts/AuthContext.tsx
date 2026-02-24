@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import { User } from '../types';
 import { useNotification } from './NotificationContext';
 import { authStore } from '../services/authStore';
+import { authService } from '../services/authService';
 
 interface AuthContextType {
     user: User | null;
@@ -19,17 +20,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [isAuthLoading, setIsAuthLoading] = useState(true);
     const { addNotification } = useNotification();
 
-    // Initialize Auth State from in-memory store
+    // Initialize Auth State from cookie-backed token
     useEffect(() => {
         const initAuth = async () => {
             try {
                 const currentUser = authStore.getUser();
+                const token = authStore.getToken();
                 if (currentUser) {
-                    if (import.meta.env.DEV) console.log('Found API session (memory), setting user:', currentUser);
+                    if (import.meta.env.DEV) console.log('Found cached user, setting user:', currentUser);
                     setUser(currentUser);
+                    // If we still have a token, try to refresh /me in background
+                    if (token) {
+                        try {
+                            if (import.meta.env.DEV) console.log('Refreshing /me with cached token');
+                            const me = await authService.getMe();
+                            setUser(me);
+                            authStore.setUser(me);
+                        } catch (e) {
+                            console.warn('Background /me refresh failed:', e);
+                        }
+                    }
+                    return;
+                }
+                if (token) {
+                    // Re-hydrate user from API if token exists in cookie
+                    if (import.meta.env.DEV) console.log('Found API token (cookie), fetching /me');
+                    const me = await authService.getMe();
+                    setUser(me);
+                    authStore.setUser(me);
                 }
             } catch (e) {
                 console.error('Auth initialization error:', e);
+                authStore.clear();
             } finally {
                 setIsAuthLoading(false);
             }

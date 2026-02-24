@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Checklist, ChecklistItem, ChecklistStatus, User } from '../types';
+import { Checklist, ChecklistItem, ChecklistStatus, User, WorkStatus, Role } from '../types';
 import { entryService } from '../services/entryService';
 import { runService } from '../services/runService';
 import { reviewService } from '../services/reviewService';
@@ -23,6 +23,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [startAttempted, setStartAttempted] = useState(false);
 
   // Incident Reporting States
   const [reportingIncidentId, setReportingIncidentId] = useState<string | null>(null);
@@ -35,11 +36,16 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
   const isExecutor = String(checklist.assignedTo) === String(currentUser.id);
   const isVerifier = String(checklist.verifiedBy) === String(currentUser.id);
+  const hasOverrideEdit = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
+  const canApprove = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
+  const canEdit = isExecutor || hasOverrideEdit;
 
-  // Logic: Nhân viên chỉ có thể sửa nếu chưa COMPLETED. Verifier không thể sửa items, chỉ có thể Confirm.
-  const isReadOnly = checklist.status === ChecklistStatus.REVIEWED ||
-    (isVerifier && checklist.status === ChecklistStatus.COMPLETED) ||
-    (!isExecutor && !isVerifier);
+  const workStatus = checklist.workStatus;
+  const isFinalized = workStatus === WorkStatus.NEEDS_REVIEW || workStatus === WorkStatus.APPROVED;
+
+  // Logic: Nhân viên chỉ có thể sửa khi chưa chuyển sang needs_review/approved/rejected.
+  // Verifier không thể sửa items, chỉ có thể Confirm.
+  const isReadOnly = isFinalized || !canEdit;
 
   console.log('[ChecklistExecution] Debug:', {
     checklist_status: checklist.status,
@@ -48,6 +54,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
     currentUser_id: currentUser.id,
     isExecutor,
     isVerifier,
+    canEdit,
     isReadOnly
   });
 
@@ -125,11 +132,30 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
   // Debounced save (500ms delay)
   const debouncedSave = useDebounce(saveEntry, 500);
 
+  const ensureStarted = useCallback(async () => {
+    if (!runContext || !isExecutor || startAttempted) return;
+    // Only attempt start when workflow is pending or unknown
+    if (workStatus && workStatus !== WorkStatus.PENDING) {
+      setStartAttempted(true);
+      return;
+    }
+    try {
+      await reviewService.startWork(runContext.runId);
+    } catch (e) {
+      console.warn('startWork failed (may already be in progress):', e);
+    } finally {
+      setStartAttempted(true);
+    }
+  }, [runContext, isExecutor, startAttempted, workStatus]);
+
   const handleStatusChange = async (itemId: string, status: 'PASS' | 'FAIL') => {
-    if (isReadOnly || checklist.status === ChecklistStatus.COMPLETED) return;
+    if (isReadOnly || workStatus === WorkStatus.COMPLETED) return;
 
     // Update local state immediately for responsive UI
     setItems(prev => prev.map(item => item.id === itemId ? { ...item, status } : item));
+
+    // Ensure workflow moved to in_progress for staff
+    await ensureStarted();
 
     if (status === 'PASS') {
       setReportingIncidentId(null);
@@ -154,15 +180,23 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
     if (!runContext) return;
     setIsSubmitting(true);
     try {
-      // Step 1: Mark as completed
-      await reviewService.completeWork(runContext.runId);
+      // Ensure startWork has been called before completing
+      await ensureStarted();
 
-      // Step 2: Request review from supervisor
-      await reviewService.requestReview(runContext.runId);
+      if (workStatus === WorkStatus.COMPLETED) {
+        // Nếu đã completed trước đó, chỉ cần yêu cầu duyệt lại
+        await reviewService.requestReview(runContext.runId);
+      } else {
+        // Step 1: Mark as completed
+        await reviewService.completeWork(runContext.runId);
+        // Step 2: Request review from supervisor
+        await reviewService.requestReview(runContext.runId);
+      }
 
       onComplete({
         ...checklist,
         status: ChecklistStatus.COMPLETED,
+        workStatus: WorkStatus.NEEDS_REVIEW,
         items: items,
         completedAt: new Date().toISOString()
       });
@@ -228,6 +262,26 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
     }
   };
 
+  const handleResubmit = async () => {
+    if (!runContext) return;
+    setIsSubmitting(true);
+    try {
+      await reviewService.resubmit(runContext.runId);
+      onComplete({
+        ...checklist,
+        status: ChecklistStatus.COMPLETED,
+        workStatus: WorkStatus.NEEDS_REVIEW,
+        items
+      });
+      alert('✅ Đã gửi lại để duyệt');
+    } catch (e) {
+      console.error('Resubmit failed:', e);
+      alert('Không gửi lại được. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleReportIncident = (item: ChecklistItem) => {
     const cleanDesc = sanitizeInput(incidentDesc);
     const finalDesc = cleanDesc || "Sự cố được phát hiện trong quá trình thực hiện checklist.";
@@ -246,6 +300,11 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
     // 2. Update Checklist Item with Note (CRITICAL FIX: Ensure note is saved in checklist)
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, note: finalDesc } : i));
+    // Persist note to entries if possible
+    if (runContext) {
+      const currentStatus = item.status || 'FAIL';
+      saveEntry(item.id, currentStatus, finalDesc);
+    }
 
     setReportedItems(prev => new Set(prev).add(item.id));
     setReportingIncidentId(null);
@@ -319,7 +378,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
               <h1 className="font-bold text-gray-900 leading-tight text-lg">{checklist.templateName}</h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${checklist.status === ChecklistStatus.REVIEWED ? 'bg-green-50 text-green-600 border-green-100' : 'bg-brand-50 text-brand-600 border-brand-100'
-                  }`}>{checklist.status}</span>
+                  }`}>{(checklist.workStatus ?? checklist.status).toString()}</span>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">{checklist.area.name}</p>
               </div>
             </div>
@@ -339,7 +398,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
             </div>
           ) : isVerifier ? (
             <div className="bg-purple-50 text-purple-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border border-purple-100">
-              <ShieldCheck size={16} /> Bạn là NGƯỜI KIỂM DUYỆT (Giám sát)
+              <ShieldCheck size={16} /> Bạn là GIÁM SÁT (không có quyền phê duyệt)
             </div>
           ) : (
             <div className="bg-gray-50 text-gray-500 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border border-gray-200">
@@ -387,14 +446,14 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
 
             <div className="grid grid-cols-2 gap-3">
               <button
-                disabled={isReadOnly || checklist.status === ChecklistStatus.COMPLETED}
+                disabled={isReadOnly || workStatus === WorkStatus.COMPLETED}
                 onClick={() => handleStatusChange(item.id, 'PASS')}
                 className={`py-3.5 rounded-2xl flex items-center justify-center gap-2 font-black text-xs transition-all active:scale-95 ${item.status === 'PASS' ? 'bg-brand-600 text-white shadow-lg shadow-brand-100' : 'bg-gray-50 text-gray-400 border border-gray-100 hover:bg-gray-100'}`}
               >
                 <Check size={16} /> ĐẠT
               </button>
               <button
-                disabled={isReadOnly || checklist.status === ChecklistStatus.COMPLETED}
+                disabled={isReadOnly || workStatus === WorkStatus.COMPLETED}
                 onClick={() => handleStatusChange(item.id, 'FAIL')}
                 className={`py-3.5 rounded-2xl flex items-center justify-center gap-2 font-black text-xs transition-all active:scale-95 ${item.status === 'FAIL' ? 'bg-red-500 text-white shadow-lg shadow-red-100' : 'bg-gray-50 text-gray-400 border border-gray-100 hover:bg-gray-100'}`}
               >
@@ -502,8 +561,19 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md p-5 border-t border-gray-100 pb-safe z-30 shadow-2xl rounded-t-3xl">
-        {/* Case 1: Nhân viên gửi báo cáo */}
-        {isExecutor && checklist.status !== ChecklistStatus.COMPLETED && checklist.status !== ChecklistStatus.REVIEWED && (
+        {/* Case 1: Nhân viên gửi báo cáo / gửi lại */}
+        {isExecutor && workStatus === WorkStatus.REJECTED && (
+          <button
+            disabled={!allAnswered || isSubmitting}
+            onClick={handleResubmit}
+            className={`w-full py-4.5 rounded-2xl font-black text-sm text-white shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 ${allAnswered ? 'bg-orange-500 shadow-orange-200' : 'bg-gray-300'}`}
+          >
+            {isSubmitting ? 'ĐANG GỬI LẠI...' : 'GỬI LẠI ĐỂ DUYỆT'}
+            {!isSubmitting && <ChevronRight size={18} />}
+          </button>
+        )}
+
+        {isExecutor && workStatus !== WorkStatus.NEEDS_REVIEW && workStatus !== WorkStatus.APPROVED && workStatus !== WorkStatus.REJECTED && (
           <button
             disabled={!allAnswered || isSubmitting}
             onClick={handleStaffSubmit}
@@ -515,7 +585,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
         )}
 
         {/* Case 2: Giám sát xác nhận */}
-        {isVerifier && checklist.status === ChecklistStatus.COMPLETED && (
+        {canApprove && workStatus === WorkStatus.NEEDS_REVIEW && (
           <div className="flex gap-4">
             <button
               onClick={handleRejectSubmit}
@@ -535,7 +605,7 @@ export const ChecklistExecution: React.FC<ChecklistExecutionProps> = ({ checklis
         )}
 
         {/* Trạng thái đã đóng */}
-        {checklist.status === ChecklistStatus.REVIEWED && (
+        {workStatus === WorkStatus.APPROVED && (
           <div className="bg-green-50 p-4 rounded-2xl border border-green-100 text-center flex items-center justify-center gap-2">
             <Check className="text-green-600" size={20} />
             <span className="text-sm font-black text-green-700 uppercase">Dữ liệu đã được chốt và lưu trữ</span>

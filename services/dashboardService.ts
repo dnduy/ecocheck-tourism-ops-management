@@ -37,8 +37,8 @@ export const dashboardService = {
 
     const runsData = runsResponse.data || runsResponse || [];
     const runs = Array.isArray(runsData) ? runsData : (runsData.data || []);
-    const incidents = incidentsResponse.data || [];
-    const areas = areasResponse || [];
+    const incidents = (incidentsResponse as any)?.data ?? incidentsResponse ?? [];
+    const areas = (areasResponse as any)?.data ?? areasResponse ?? [];
 
     const completedRuns = runs.filter((r: any) => {
       const s = normalizeStatus(r.work_status || r.status);

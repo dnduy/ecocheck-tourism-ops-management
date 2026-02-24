@@ -4,7 +4,7 @@ import { areaService } from '../../services/areaService';
 import { Area } from '../../types';
 import { useNotification } from '../../contexts/NotificationContext';
 
-export const useAreas = () => {
+export const useAreas = (options?: { enabled?: boolean }) => {
     return useQuery({
         queryKey: ['areas'],
         queryFn: async () => {
@@ -17,6 +17,7 @@ export const useAreas = () => {
             } as Area));
         },
         staleTime: 1000 * 60 * 5, // Areas don't change often
+        enabled: options?.enabled ?? true,
     });
 };
 

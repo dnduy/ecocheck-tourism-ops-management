@@ -11,7 +11,7 @@ interface RunServiceInterface
     public function getRuns(array $filters, ?User $user, int $perPage): LengthAwarePaginator;
     public function createRun(array $data, User $creator): Run;
     public function getRunDetail(Run $run): Run;
-    public function updateRun(Run $run, array $data): Run;
+    public function updateRun(Run $run, array $data, ?User $actor = null): Run;
     public function deleteRun(Run $run): void;
 
     // Workflow methods

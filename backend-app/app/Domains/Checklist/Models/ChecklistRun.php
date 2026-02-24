@@ -11,6 +11,7 @@ class ChecklistRun extends Model
 {
     protected $fillable = [
         'template_id',
+        'session_id',
         'area_id',
         'run_date',
         'status',
@@ -30,6 +31,11 @@ class ChecklistRun extends Model
     public function template(): BelongsTo
     {
         return $this->belongsTo(ChecklistTemplate::class, 'template_id');
+    }
+
+    public function session(): BelongsTo
+    {
+        return $this->belongsTo(TemplateSession::class, 'session_id');
     }
 
     public function area(): BelongsTo

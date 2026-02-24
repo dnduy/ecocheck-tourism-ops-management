@@ -1,4 +1,4 @@
-import { apiPut } from './api';
+import { apiPut, unwrapApiData } from './api';
 
 export interface EntryData {
   run_id: number;
@@ -21,6 +21,7 @@ export interface EntryResponse {
 
 export const entryService = {
   async upsert(data: EntryData): Promise<EntryResponse> {
-    return apiPut<EntryResponse>('/entries', data);
+    const res = await apiPut<EntryResponse | { data: EntryResponse }>('/entries', data);
+    return unwrapApiData<EntryResponse>(res);
   }
 };

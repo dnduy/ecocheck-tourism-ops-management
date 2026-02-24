@@ -20,6 +20,7 @@ class TemplatesController
             'area',
             'groups.items',
             'items',
+            'sessions',
             'columns.session',
             'columns.role',
         ])
@@ -35,6 +36,7 @@ class TemplatesController
             'area',
             'groups.items',
             'items',
+            'sessions',
             'columns.session',
             'columns.role',
         ])
@@ -214,6 +216,16 @@ class TemplatesController
             })
             ->all();
 
+        $sessions = $template->sessions
+            ->sortBy('sort_order')
+            ->values()
+            ->map(fn($session) => [
+                'id' => $session->id,
+                'time_hhmm' => $session->time_hhmm,
+                'sort_order' => $session->sort_order,
+            ])
+            ->all();
+
         return [
             'id' => $template->id,
             'name' => $template->name,
@@ -224,6 +236,7 @@ class TemplatesController
                 ? ['id' => $template->area->id, 'name' => $template->area->name]
                 : null,
             'groups' => $groups,
+            'sessions' => $sessions,
             'columns' => $columns,
         ];
     }

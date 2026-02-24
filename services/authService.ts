@@ -36,7 +36,8 @@ export const authService = {
   },
 
   async getMe(): Promise<User> {
-    return apiGet<User>('/me');
+    const response = await apiGet<any>('/me');
+    return (response?.user ?? response) as User;
   },
 
   setToken(token: string): void {

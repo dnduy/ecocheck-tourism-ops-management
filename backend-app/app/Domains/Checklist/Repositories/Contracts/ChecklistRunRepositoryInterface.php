@@ -9,7 +9,7 @@ interface ChecklistRunRepositoryInterface
 {
     public function find(int $id): ?ChecklistRun;
     
-    public function findByAreaAndDate(int $areaId, string $date): ?ChecklistRun;
+    public function findByAreaAndDate(int $areaId, string $date, ?int $templateId = null, ?int $sessionId = null): ?ChecklistRun;
     
     public function create(array $data): ChecklistRun;
     

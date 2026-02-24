@@ -13,11 +13,22 @@ class ChecklistRunRepository implements ChecklistRunRepositoryInterface
         return ChecklistRun::find($id);
     }
     
-    public function findByAreaAndDate(int $areaId, string $date): ?ChecklistRun
+    public function findByAreaAndDate(int $areaId, string $date, ?int $templateId = null, ?int $sessionId = null): ?ChecklistRun
     {
-        return ChecklistRun::where('area_id', $areaId)
-            ->where('run_date', $date)
-            ->first();
+        $query = ChecklistRun::where('area_id', $areaId)
+            ->where('run_date', $date);
+
+        if ($templateId) {
+            $query->where('template_id', $templateId);
+        }
+
+        if ($sessionId !== null) {
+            $query->where('session_id', $sessionId);
+        } else {
+            $query->whereNull('session_id');
+        }
+
+        return $query->first();
     }
     
     public function create(array $data): ChecklistRun
@@ -45,6 +56,10 @@ class ChecklistRunRepository implements ChecklistRunRepositoryInterface
         
         if (!empty($filters['assigned_to'])) {
             $query->where('assigned_to', $filters['assigned_to']);
+        }
+
+        if (!empty($filters['session_id'])) {
+            $query->where('session_id', $filters['session_id']);
         }
         
         if (!empty($filters['status'])) {
@@ -76,6 +91,7 @@ class ChecklistRunRepository implements ChecklistRunRepositoryInterface
     {
         return ChecklistRun::with([
             'template.sessions',
+            'session',
             'template.roles',
             'template.columns.session',
             'template.columns.role',

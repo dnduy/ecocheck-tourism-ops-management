@@ -1,17 +1,20 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './api';
+import { apiGet, apiPost, apiPatch, apiDelete, unwrapApiData } from './api';
 import { Area } from '../types';
 
 export const areaService = {
   async getAll(): Promise<Area[]> {
-    return apiGet<Area[]>('/areas');
+    const res = await apiGet<Area[] | { data: Area[] }>('/areas');
+    return unwrapApiData<Area[]>(res) || [];
   },
 
   async create(data: { name: string; type: string; description?: string }): Promise<Area> {
-    return apiPost<Area>('/areas', data);
+    const res = await apiPost<Area | { data: Area }>('/areas', data);
+    return unwrapApiData<Area>(res);
   },
 
   async update(id: number, data: Partial<Area>): Promise<Area> {
-    return apiPatch<Area>(`/areas/${id}`, data);
+    const res = await apiPatch<Area | { data: Area }>(`/areas/${id}`, data);
+    return unwrapApiData<Area>(res);
   },
 
   async delete(id: number): Promise<void> {

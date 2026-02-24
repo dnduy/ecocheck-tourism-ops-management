@@ -8,6 +8,11 @@ use App\Interfaces\Repositories\SignoffRepositoryInterface;
 use App\Models\Run;
 use App\Models\User;
 use App\Models\ChecklistTemplate;
+use App\Models\TemplateColumn;
+use App\Domains\Checklist\Models\TemplateSession;
+use App\Models\Entry;
+use App\Models\Signoff;
+use App\Models\RunAssignmentLog;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use App\Support\RunAccess;
@@ -41,10 +46,13 @@ class RunService implements RunServiceInterface
     public function createRun(array $data, User $creator): Run
     {
         return DB::transaction(function () use ($data, $creator) {
-            // Prefer active template for area; fallback to any template, then create default.
-            $template = ChecklistTemplate::where('area_id', $data['area_id'] ?? null)
-                ->where('is_active', true)
-                ->first()
+            $requestedTemplateId = $data['checklist_template_id'] ?? $data['template_id'] ?? null;
+
+            // Prefer requested template; fallback to active template for area, then any template, then create default.
+            $template = ($requestedTemplateId ? ChecklistTemplate::find($requestedTemplateId) : null)
+                ?? ChecklistTemplate::where('area_id', $data['area_id'] ?? null)
+                    ->where('is_active', true)
+                    ->first()
                 ?? ChecklistTemplate::where('area_id', $data['area_id'] ?? null)->first()
                 ?? ChecklistTemplate::first()
                 ?? ChecklistTemplate::create([
@@ -53,21 +61,46 @@ class RunService implements RunServiceInterface
                     'is_active' => true,
                 ]);
 
+            $sessionId = $data['session_id'] ?? $template->sessions()->orderBy('sort_order')->value('id');
+
             try {
                 $workStatus = 'pending';
+                $templateId = $requestedTemplateId ?? $template->id;
+                $runDate = $data['scheduled_for'] ?? $data['date'] ?? now();
+
+                $preExisting = Run::where('template_id', $templateId)
+                    ->where('area_id', $data['area_id'])
+                    ->when($sessionId, function ($query) use ($sessionId) {
+                        return $query->where('session_id', $sessionId);
+                    }, function ($query) {
+                        return $query->whereNull('session_id');
+                    })
+                    ->whereDate('run_date', $runDate)
+                    ->first();
+
+                if ($preExisting) {
+                    return $preExisting;
+                }
+
                 return $this->runRepository->create([
-                    'template_id' => $data['checklist_template_id'] ?? $data['template_id'] ?? $template->id,
+                    'template_id' => $templateId,
+                    'session_id' => $sessionId,
                     'area_id' => $data['area_id'],
                     'status' => $this->toLegacyStatus($workStatus), // Legacy mirror
                     'work_status' => $workStatus, // Workflow status
-                    'run_date' => $data['scheduled_for'] ?? $data['date'] ?? now(),
+                    'run_date' => $runDate,
                     'created_by' => $creator->id,
                 ]);
             } catch (\Illuminate\Database\QueryException $e) {
                 if ($e->getCode() == 23000) { // Integrity constraint violation
                     // Find existing run and return it
-                    $existingRun = Run::where('template_id', $data['checklist_template_id'] ?? $data['template_id'] ?? $template->id)
+                    $existingRun = Run::where('template_id', $requestedTemplateId ?? $template->id)
                         ->where('area_id', $data['area_id'])
+                        ->when($sessionId, function ($query) use ($sessionId) {
+                            return $query->where('session_id', $sessionId);
+                        }, function ($query) {
+                            return $query->whereNull('session_id');
+                        })
                         ->whereDate('run_date', $data['scheduled_for'] ?? $data['date'] ?? now())
                         ->first();
 
@@ -86,19 +119,55 @@ class RunService implements RunServiceInterface
             'area',
             'template.groups.items',
             'template.items',
-            'template.columns' => fn($q) => $q->orderBy('sort_order'),
+            'template.sessions' => fn($q) => $q->orderBy('sort_order'),
+            'template.roles' => fn($q) => $q->orderBy('sort_order'),
+            'template.columns' => fn($q) => $q->orderBy('sort_order')->with(['session', 'role']),
+            'session',
             'entries',
             'signoffs',
             'assignedUser',
             'verifiedUser'
         ]);
+
+        // Ensure template has at least one session/column to record evaluations.
+        if ($run->relationLoaded('template') && $run->template) {
+            $template = $run->template;
+            if ($template->relationLoaded('columns') && $template->columns->isEmpty()) {
+                $session = TemplateSession::firstOrCreate(
+                    ['template_id' => $template->id, 'time_hhmm' => '08:00'],
+                    ['sort_order' => 0]
+                );
+
+                TemplateColumn::create([
+                    'template_id' => $template->id,
+                    'session_id' => $session->id,
+                    'role_id' => null,
+                    'sort_order' => 0,
+                ]);
+
+                $template->load(['columns' => fn($q) => $q->orderBy('sort_order')]);
+            }
+        }
+
         return $run;
     }
 
-    public function updateRun(Run $run, array $data): Run
+    public function updateRun(Run $run, array $data, ?User $actor = null): Run
     {
+        $prevAssignedTo = $run->assigned_to;
+        $prevVerifiedBy = $run->verified_by;
+
+        $assignedChanged = array_key_exists('assigned_to', $data) && $data['assigned_to'] !== $run->assigned_to;
+        $verifiedChanged = array_key_exists('verified_by', $data) && $data['verified_by'] !== $run->verified_by;
+        $newAssignedTo = $assignedChanged ? $data['assigned_to'] : $run->assigned_to;
+        $newVerifiedBy = $verifiedChanged ? $data['verified_by'] : $run->verified_by;
+
+        if ($actor) {
+            $data['updated_by'] = $actor->id;
+        }
+
         // If re-assigning to a new staff, clear previous progress and incidents state
-        if (array_key_exists('assigned_to', $data) && $data['assigned_to'] !== $run->assigned_to) {
+        if ($assignedChanged) {
             // Remove old check results
             $run->entries()->delete();
             // Remove old signoffs
@@ -112,7 +181,99 @@ class RunService implements RunServiceInterface
 
         $data = $this->syncStatusFields($data, $run);
 
-        return $this->runRepository->update($run, $data);
+        $updated = $this->runRepository->update($run, $data);
+
+        if ($assignedChanged || $verifiedChanged) {
+            $this->logAssignmentChange(
+                $actor,
+                $updated,
+                $prevAssignedTo,
+                $newAssignedTo,
+                $prevVerifiedBy,
+                $newVerifiedBy,
+                'manual-update'
+            );
+        }
+
+        // Apply assignment change to other unstarted runs today in the same area
+        if (($assignedChanged || $verifiedChanged) && $run->run_date && $run->run_date->isToday()) {
+            $otherRuns = Run::where('area_id', $run->area_id)
+                ->whereDate('run_date', $run->run_date)
+                ->where('id', '!=', $run->id)
+                ->whereIn('work_status', ['pending', 'draft'])
+                ->whereNull('started_at')
+                ->get();
+
+            if ($otherRuns->isNotEmpty()) {
+                $otherRunIds = $otherRuns->pluck('id');
+
+                if ($assignedChanged) {
+                    Entry::whereIn('run_id', $otherRunIds)->delete();
+                    Signoff::whereIn('run_id', $otherRunIds)->delete();
+                }
+
+                $bulkData = [];
+                if ($assignedChanged) {
+                    $bulkData['assigned_to'] = $newAssignedTo;
+                    $bulkData['work_status'] = 'pending';
+                    $bulkData['status'] = $this->toLegacyStatus('pending');
+                    $bulkData['started_at'] = null;
+                    $bulkData['completed_at'] = null;
+                    $bulkData['review_requested_at'] = null;
+                }
+                if ($verifiedChanged) {
+                    $bulkData['verified_by'] = $newVerifiedBy;
+                }
+
+                if (!empty($bulkData)) {
+                    Run::whereIn('id', $otherRunIds)->update($bulkData);
+                }
+
+                if ($actor) {
+                    foreach ($otherRuns as $otherRun) {
+                        $this->logAssignmentChange(
+                            $actor,
+                            $otherRun,
+                            $otherRun->assigned_to,
+                            $assignedChanged ? $newAssignedTo : $otherRun->assigned_to,
+                            $otherRun->verified_by,
+                            $verifiedChanged ? $newVerifiedBy : $otherRun->verified_by,
+                            'auto-sync-today'
+                        );
+                    }
+                }
+            }
+        }
+
+        return $updated;
+    }
+
+    private function logAssignmentChange(
+        ?User $actor,
+        Run $run,
+        ?int $prevAssignedTo,
+        ?int $newAssignedTo,
+        ?int $prevVerifiedBy,
+        ?int $newVerifiedBy,
+        string $note
+    ): void {
+        if (!$actor) {
+            return;
+        }
+
+        if ($prevAssignedTo === $newAssignedTo && $prevVerifiedBy === $newVerifiedBy) {
+            return;
+        }
+
+        RunAssignmentLog::create([
+            'run_id' => $run->id,
+            'assigned_by' => $actor->id,
+            'previous_assigned_to' => $prevAssignedTo,
+            'new_assigned_to' => $newAssignedTo,
+            'previous_verified_by' => $prevVerifiedBy,
+            'new_verified_by' => $newVerifiedBy,
+            'note' => $note,
+        ]);
     }
 
 
@@ -125,7 +286,7 @@ class RunService implements RunServiceInterface
 
     public function startWork(Run $run, User $user): Run
     {
-        if (!$user->hasRole('staff')) {
+        if (!$user->hasAnyRole(['staff', 'supervisor'])) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
 
@@ -147,7 +308,7 @@ class RunService implements RunServiceInterface
 
     public function completeWork(Run $run, User $user): Run
     {
-        if (!$user->hasRole('staff')) {
+        if (!$user->hasAnyRole(['staff', 'supervisor'])) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
 
@@ -169,7 +330,7 @@ class RunService implements RunServiceInterface
 
     public function requestReview(Run $run, User $user): Run
     {
-        if (!$user->hasRole('staff')) {
+        if (!$user->hasAnyRole(['staff', 'supervisor'])) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
 
@@ -256,7 +417,7 @@ class RunService implements RunServiceInterface
 
     public function resubmitRun(Run $run, User $user): Run
     {
-        if (!$user->hasRole('staff')) {
+        if (!$user->hasAnyRole(['staff', 'supervisor'])) {
             throw new \Illuminate\Auth\Access\AuthorizationException('Unauthorized');
         }
 

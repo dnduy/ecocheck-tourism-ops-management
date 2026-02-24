@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './api';
+import { apiGet, apiPost, apiPatch, apiDelete, unwrapApiData } from './api';
 import { User } from '../types';
 
 export interface CreateUserData {
@@ -17,15 +17,18 @@ export interface UpdateUserData {
 
 export const userService = {
   async getAll(): Promise<User[]> {
-    return apiGet<User[]>('/users');
+    const res = await apiGet<User[] | { data: User[] }>('/users');
+    return unwrapApiData<User[]>(res) || [];
   },
 
   async create(data: CreateUserData): Promise<User> {
-    return apiPost<User>('/users', data);
+    const res = await apiPost<User | { data: User }>('/users', data);
+    return unwrapApiData<User>(res);
   },
 
   async update(id: number, data: UpdateUserData): Promise<User> {
-    return apiPatch<User>(`/users/${id}`, data);
+    const res = await apiPatch<User | { data: User }>(`/users/${id}`, data);
+    return unwrapApiData<User>(res);
   },
 
   async delete(id: number): Promise<void> {

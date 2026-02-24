@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { templateService } from '../../services/templateService';
 import { useNotification } from '../../contexts/NotificationContext';
 
-export const useTemplates = () => {
+export const useTemplates = (options?: { enabled?: boolean }) => {
     return useQuery({
         queryKey: ['templates'],
         queryFn: async () => {
@@ -11,6 +11,7 @@ export const useTemplates = () => {
             return resp || [];
         },
         staleTime: 1000 * 60 * 5,
+        enabled: options?.enabled ?? true,
     });
 };
 

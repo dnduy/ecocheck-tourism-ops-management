@@ -13,6 +13,7 @@ export interface RunDetail {
     id: number;
     area_id: number;
     template_id: number;
+    session_id?: number;
     date: string;
     status: string;
     assigned_to?: number;
@@ -59,6 +60,7 @@ export interface RunListParams {
   area_id?: number;
   assigned_to?: number;
   status?: string;
+  session_id?: number;
   per_page?: number;
 }
 
@@ -69,6 +71,7 @@ export const runService = {
     if (params?.area_id) queryString.append('area_id', params.area_id.toString());
     if (params?.assigned_to) queryString.append('assigned_to', params.assigned_to.toString());
     if (params?.status) queryString.append('status', params.status);
+    if (params?.session_id) queryString.append('session_id', params.session_id.toString());
     if (params?.per_page) queryString.append('per_page', params.per_page.toString());
 
     const endpoint = queryString.toString() ? `/runs?${queryString}` : '/runs';
@@ -76,10 +79,11 @@ export const runService = {
     return unwrapResponse(res);
   },
 
-  async create(areaId: number, date: string, templateId?: number): Promise<any> {
+  async create(areaId: number, date: string, templateId?: number, sessionId?: number): Promise<any> {
     // Backend returns simple run object: { id, area_id, template_id, status, ... }
     const payload: any = { area_id: areaId, date };
     if (templateId) payload.checklist_template_id = templateId;
+    if (sessionId) payload.session_id = sessionId;
     const res = await apiPost('/runs', payload);
     return unwrapResponse(res);
   },

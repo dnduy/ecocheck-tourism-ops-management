@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './api';
+import { apiGet, apiPost, apiPut, apiDelete, unwrapApiData } from './api';
 import { authStore } from './authStore';
 
 export interface TemplateColumnInput {
@@ -26,19 +26,23 @@ export interface TemplateUpdateInput extends Partial<TemplateCreateInput> { }
 
 export const templateService = {
   async list(): Promise<any[]> {
-    return apiGet<any[]>('/templates');
+    const res = await apiGet<any[] | { data: any[] }>('/templates');
+    return unwrapApiData<any[]>(res) || [];
   },
 
   async get(id: number): Promise<any> {
-    return apiGet<any>(`/templates/${id}`);
+    const res = await apiGet<any | { data: any }>(`/templates/${id}`);
+    return unwrapApiData<any>(res);
   },
 
   async create(data: TemplateCreateInput): Promise<any> {
-    return apiPost<any>('/templates', data);
+    const res = await apiPost<any | { data: any }>('/templates', data);
+    return unwrapApiData<any>(res);
   },
 
   async update(id: number, data: TemplateUpdateInput): Promise<any> {
-    return apiPut<any>(`/templates/${id}`, data);
+    const res = await apiPut<any | { data: any }>(`/templates/${id}`, data);
+    return unwrapApiData<any>(res);
   },
 
   async delete(id: number): Promise<void> {
@@ -68,6 +72,7 @@ export const templateService = {
       const errorText = await response.text();
       throw new Error(errorText || 'Import failed');
     }
-    return response.json();
+    const json = await response.json();
+    return unwrapApiData<any>(json);
   }
 };

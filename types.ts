@@ -3,7 +3,8 @@ export enum Role {
   ADMIN = 'admin',
   STAFF = 'staff',
   SUPERVISOR = 'supervisor',
-  MANAGER = 'manager'
+  MANAGER = 'manager',
+  MAINTENANCE = 'maintenance'
 }
 
 export enum ChecklistStatus {
@@ -130,6 +131,8 @@ export interface Checklist {
   items: ChecklistItem[];
   assignedTo: string;
   verifiedBy?: string;
+  sessionId?: number;
+  sessionTime?: string;
   completedAt?: string;
   verifiedAt?: string;
 }

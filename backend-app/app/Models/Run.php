@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Domains\Checklist\Models\TemplateSession;
+use App\Models\RunAssignmentLog;
 
 class Run extends Model
 {
@@ -15,6 +17,7 @@ class Run extends Model
 
     protected $fillable = [
         'template_id',
+        'session_id',
         'area_id',
         'status',
         'work_status',
@@ -41,6 +44,11 @@ class Run extends Model
         return $this->belongsTo(ChecklistTemplate::class, 'template_id');
     }
 
+    public function session(): BelongsTo
+    {
+        return $this->belongsTo(TemplateSession::class, 'session_id');
+    }
+
     public function area(): BelongsTo
     {
         return $this->belongsTo(Area::class);
@@ -54,6 +62,11 @@ class Run extends Model
     public function signoffs(): HasMany
     {
         return $this->hasMany(Signoff::class);
+    }
+
+    public function assignmentLogs(): HasMany
+    {
+        return $this->hasMany(RunAssignmentLog::class, 'run_id');
     }
 
     public function creator(): BelongsTo

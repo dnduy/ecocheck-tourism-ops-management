@@ -19,11 +19,13 @@ interface WorkStatusActionsProps {
 export const WorkStatusActions: React.FC<WorkStatusActionsProps> = ({
   runId,
   workStatus,
+  currentUserRole,
   isAssignee,
   isReviewer,
   onStatusChange
 }) => {
   const [loading, setLoading] = React.useState(false);
+  const canApprove = currentUserRole === 'admin' || currentUserRole === 'manager';
 
   const handleAction = async (action: () => Promise<any>) => {
     setLoading(true);
@@ -90,7 +92,7 @@ export const WorkStatusActions: React.FC<WorkStatusActionsProps> = ({
   }
 
   // Reviewer workflow: needs_review → approved or rejected
-  if (isReviewer && workStatus === WorkStatus.NEEDS_REVIEW) {
+  if (isReviewer && canApprove && workStatus === WorkStatus.NEEDS_REVIEW) {
     return (
       <div className="flex gap-2">
         <button

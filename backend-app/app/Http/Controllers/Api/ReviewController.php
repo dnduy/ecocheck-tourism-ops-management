@@ -30,8 +30,12 @@ class ReviewController extends Controller
      */
     public function getPendingReviews(Request $request): JsonResponse
     {
+        $user = $request->user();
+        if (!$user || !\App\Support\RunAccess::isAdminOrManager($user)) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
         // Paginator is returned from service
-        $runs = $this->runService->getPendingReviews($request->user(), 20);
+        $runs = $this->runService->getPendingReviews($user, 20);
         return $this->successResponse($runs, 'Lấy danh sách cần duyệt thành công');
     }
 

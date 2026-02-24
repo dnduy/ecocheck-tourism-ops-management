@@ -34,18 +34,20 @@ export default function AppContent() {
   // --- CONTEXT HOOKS ---
   const { user, isAuthLoading, login, updateUser, logout } = useAuth();
   const { notifications, removeNotification, addNotification } = useNotification();
+  const authEnabled = !isAuthLoading && !!user;
 
   // --- DATA HOOKS (TanStack Query) ---
-  const { data: incidents = [] } = useIncidents();
+  const { data: incidents = [] } = useIncidents({ enabled: authEnabled });
   // Filter runs for staff automatically if needed, simplified here to fetch all (cached)
   // Optimization: pass currentUser to useChecklists to filter at query level if backend supports it
   const { data: checklists = [], refetch: refetchChecklists } = useChecklists(
-    user?.role === Role.STAFF ? { assigned_to: Number(user.id) } : undefined
+    (user?.role === Role.STAFF || user?.role === Role.SUPERVISOR) ? { assigned_to: Number(user.id) } : undefined,
+    { enabled: authEnabled }
   );
-  const { data: users = [] } = useUsers();
-  const { data: areas = [], refetch: refetchAreas } = useAreas();
-  const { data: templates = [], refetch: refetchTemplates } = useTemplates();
-  const { shifts, addShift, deleteShift } = useShifts();
+  const { data: users = [] } = useUsers({ enabled: authEnabled });
+  const { data: areas = [], refetch: refetchAreas } = useAreas({ enabled: authEnabled });
+  const { data: templates = [], refetch: refetchTemplates } = useTemplates({ enabled: authEnabled });
+  const { shifts, addShift, deleteShift } = useShifts({ enabled: authEnabled });
 
   // --- MUTATIONS ---
   const { createIncident, updateIncident, assignIncident } = useIncidentMutations();

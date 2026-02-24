@@ -16,7 +16,11 @@ class StatsController
         $stats = [
             'total_staff' => User::role('staff')->count(),
             'staff_with_runs' => User::role('staff')
-                ->whereHas('assignedRuns')
+                ->whereExists(function ($query) {
+                    $query->select(DB::raw(1))
+                        ->from('checklist_runs')
+                        ->whereColumn('checklist_runs.assigned_to', 'users.id');
+                })
                 ->count(),
             'total_runs' => ChecklistRun::count(),
             'completed_runs' => ChecklistRun::whereIn('work_status', ['completed', 'needs_review', 'approved'])->count(),
@@ -68,7 +72,12 @@ class StatsController
         return DB::table('area_user')
             ->join('areas', 'area_user.area_id', '=', 'areas.id')
             ->join('users', 'area_user.user_id', '=', 'users.id')
-            ->where('users.role', 'staff')
+            ->join('model_has_roles', function ($join) {
+                $join->on('model_has_roles.model_id', '=', 'users.id')
+                    ->where('model_has_roles.model_type', '=', User::class);
+            })
+            ->join('roles', 'model_has_roles.role_id', '=', 'roles.id')
+            ->where('roles.name', 'staff')
             ->select('areas.id', 'areas.name', DB::raw('COUNT(users.id) as staff_count'))
             ->groupBy('areas.id', 'areas.name')
             ->get()

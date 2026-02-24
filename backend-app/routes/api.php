@@ -69,6 +69,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Checklist Runs
     Route::middleware('role:admin|manager|supervisor,sanctum')->group(function () {
         Route::get('/runs/{run}/export', [\App\Http\Controllers\Api\RunController::class, 'export']);
+    });
+    Route::middleware('role:admin|manager,sanctum')->group(function () {
         Route::post('/runs', [\App\Http\Controllers\Api\RunController::class, 'store']);
         Route::patch('/runs/{run}', [\App\Http\Controllers\Api\RunController::class, 'update']);
     });
@@ -101,7 +103,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Review Workflow
-    Route::middleware('role:admin|manager|supervisor,sanctum')->group(function () {
+    Route::middleware('role:admin|manager,sanctum')->group(function () {
         Route::get('/review/pending', [ReviewController::class, 'getPendingReviews']);
         Route::get('/review/stats', [ReviewController::class, 'getStatusStats']);
         Route::get('/review/runs/{run}', [ReviewController::class, 'showForReview']);
@@ -109,7 +111,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/review/runs/{run}/reject', [ReviewController::class, 'reject']);
     });
 
-    Route::middleware('role:staff,sanctum')->group(function () {
+    Route::middleware('role:staff|supervisor,sanctum')->group(function () {
         Route::post('/review/runs/{run}/start', [ReviewController::class, 'startWork']);
         Route::post('/review/runs/{run}/complete', [ReviewController::class, 'completeWork']);
         Route::post('/review/runs/{run}/request-review', [ReviewController::class, 'requestReview']);

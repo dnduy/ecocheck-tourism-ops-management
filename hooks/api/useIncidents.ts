@@ -4,7 +4,7 @@ import { incidentService } from '../../services/incidentService';
 import { Incident, IncidentPriority } from '../../types';
 import { useNotification } from '../../contexts/NotificationContext';
 
-export const useIncidents = () => {
+export const useIncidents = (options?: { enabled?: boolean }) => {
     const query = useQuery({
         queryKey: ['incidents'],
         queryFn: async () => {
@@ -26,6 +26,7 @@ export const useIncidents = () => {
             }) as Incident);
         },
         refetchInterval: 60000, // Auto-refetch every minute
+        enabled: options?.enabled ?? true,
     });
 
     return query;
@@ -33,7 +34,6 @@ export const useIncidents = () => {
 
 export const useIncidentMutations = () => {
     const queryClient = useQueryClient();
-    const { addNotification } = useNotification();
     const { addNotification } = useNotification();
 
     const createIncident = useMutation({

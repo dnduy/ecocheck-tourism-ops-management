@@ -42,6 +42,8 @@ export const Admin: React.FC<AdminProps> = ({
   onRunsChanged,
   onTemplatesChanged
 }) => {
+  const canAssign = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
+
   // Determine available tabs based on Role
   const getAvailableTabs = () => {
     if (currentUser.role === Role.ADMIN) {
@@ -65,9 +67,8 @@ export const Admin: React.FC<AdminProps> = ({
         { id: 'TEMPLATES', label: 'Template', icon: Layers }
       ];
     } else if (currentUser.role === Role.SUPERVISOR) {
-      // Supervisor can manage runs and shifts
+      // Supervisor chỉ xem công việc của mình và ca trực
       return [
-        { id: 'ASSIGN_WORK', label: 'Gán việc', icon: UserCheck },
         { id: 'SHIFTS', label: 'Ca trực', icon: Clock },
         { id: 'CHECKLISTS', label: 'Mẫu', icon: ClipboardList }
       ];
@@ -120,6 +121,7 @@ export const Admin: React.FC<AdminProps> = ({
   const [assignWorkData, setAssignWorkData] = useState({
     templateId: '',
     areaId: '',
+    sessionId: '',
     assignedTo: '',
     verifiedBy: '',
     date: new Date().toISOString().split('T')[0]
@@ -294,15 +296,27 @@ export const Admin: React.FC<AdminProps> = ({
 
   // Handler for Assign Work
   const handleSubmitAssignWork = async () => {
-    const { templateId, areaId, assignedTo, verifiedBy, date } = assignWorkData;
+    const { templateId, areaId, sessionId, assignedTo, verifiedBy, date } = assignWorkData;
     if (!templateId || !areaId || !date) {
       alert('Vui lòng điền đầy đủ: Template, Khu vực và Ngày.');
       return;
     }
 
+    const selectedTemplate = templates.find((t: any) => String(t.id) === String(templateId));
+    const availableSessions = selectedTemplate?.sessions || [];
+    if (availableSessions.length > 1 && !sessionId) {
+      alert('Vui lòng chọn thời điểm thực hiện (session) cho checklist.');
+      return;
+    }
+
     try {
       // 1) Tạo run theo API backend (area_id + date + template)
-      const createdRun = await runService.create(Number(areaId), date, Number(templateId));
+      const createdRun = await runService.create(
+        Number(areaId),
+        date,
+        Number(templateId),
+        sessionId ? Number(sessionId) : undefined
+      );
       const runId = createdRun?.id || createdRun?.run?.id;
 
       // 2) Nếu có người thực hiện/giám sát, cập nhật run
@@ -317,6 +331,7 @@ export const Admin: React.FC<AdminProps> = ({
       setShowAssignWorkModal(false);
       setAssignWorkData({
         templateId: '', areaId: '', assignedTo: '', verifiedBy: '',
+        sessionId: '',
         date: new Date().toISOString().split('T')[0]
       });
 
@@ -696,9 +711,11 @@ export const Admin: React.FC<AdminProps> = ({
 
             <div className="flex justify-between items-center px-1">
               <h2 className="font-bold text-gray-800">Mẫu Checklist ({checklists.length})</h2>
-              <button onClick={() => setShowChecklistModal(true)} className="bg-brand-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-brand-100">
-                <Plus size={16} className="mr-1" /> Tạo mẫu
-              </button>
+              {canAssign && (
+                <button onClick={() => setShowChecklistModal(true)} className="bg-brand-600 text-white px-3 py-2 rounded-xl flex items-center text-xs font-bold shadow-lg shadow-brand-100">
+                  <Plus size={16} className="mr-1" /> Tạo mẫu
+                </button>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -725,10 +742,11 @@ export const Admin: React.FC<AdminProps> = ({
                         <select
                           value={cl.assignedTo || ''}
                           onChange={(e) => onAssignChecklist?.(cl.id, { assignedTo: e.target.value })}
+                          disabled={!canAssign}
                           className={`text-xs p-2.5 rounded-xl border-none font-bold focus:ring-1 outline-none ${!cl.assignedTo ? 'bg-red-50 text-red-600 focus:ring-red-200' : 'bg-gray-50 text-brand-700 focus:ring-brand-500'}`}
                         >
                           <option value="">-- Chưa phân công --</option>
-                          {users.filter(u => u.role === Role.STAFF || u.role === Role.MAINTENANCE).map(u => (
+                          {users.filter(u => u.role === Role.STAFF || u.role === Role.SUPERVISOR).map(u => (
                             <option key={u.id} value={u.id}>{u.name}</option>
                           ))}
                         </select>
@@ -741,10 +759,11 @@ export const Admin: React.FC<AdminProps> = ({
                         <select
                           value={cl.verifiedBy || ''}
                           onChange={(e) => onAssignChecklist?.(cl.id, { verifiedBy: e.target.value })}
+                          disabled={!canAssign}
                           className={`text-xs p-2.5 rounded-xl border-none font-bold focus:ring-1 outline-none ${!cl.verifiedBy ? 'bg-red-50 text-red-600 focus:ring-red-200' : 'bg-purple-50 text-purple-700 focus:ring-purple-500'}`}
                         >
                           <option value="">-- Chưa phân công --</option>
-                          {users.filter(u => u.role === Role.ADMIN || u.role === Role.MANAGER || u.role === Role.SUPERVISOR).map(u => (
+                          {users.filter(u => u.role === Role.ADMIN || u.role === Role.MANAGER).map(u => (
                             <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                           ))}
                         </select>
@@ -882,12 +901,14 @@ export const Admin: React.FC<AdminProps> = ({
                   <h3 className="font-bold text-sm">Gán việc mới</h3>
                   <p className="text-[10px] text-blue-100 opacity-90">Tạo công việc mới cho nhân viên từ template có sẵn.</p>
                 </div>
-                <button
-                  onClick={() => setShowAssignWorkModal(true)}
-                  className="bg-white text-purple-700 px-3 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-purple-50 active:scale-95 transition-transform flex items-center gap-1"
-                >
-                  <UserCheck size={14} /> Gán việc
-                </button>
+                {canAssign && (
+                  <button
+                    onClick={() => setShowAssignWorkModal(true)}
+                    className="bg-white text-purple-700 px-3 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-purple-50 active:scale-95 transition-transform flex items-center gap-1"
+                  >
+                    <UserCheck size={14} /> Gán việc
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1124,7 +1145,7 @@ export const Admin: React.FC<AdminProps> = ({
                       className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold"
                     >
                       <option value="">-- Chọn --</option>
-                      {users.filter(u => u.role === Role.STAFF || u.role === Role.MAINTENANCE).map(u => (
+                      {users.filter(u => u.role === Role.STAFF || u.role === Role.SUPERVISOR).map(u => (
                         <option key={u.id} value={u.id}>{u.name}</option>
                       ))}
                     </select>
@@ -1137,7 +1158,7 @@ export const Admin: React.FC<AdminProps> = ({
                       className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold"
                     >
                       <option value="">-- Chọn --</option>
-                      {users.filter(u => u.role === Role.ADMIN || u.role === Role.MANAGER || u.role === Role.SUPERVISOR).map(u => (
+                      {users.filter(u => u.role === Role.ADMIN || u.role === Role.MANAGER).map(u => (
                         <option key={u.id} value={u.id}>{u.name}</option>
                       ))}
                     </select>
@@ -1302,7 +1323,17 @@ export const Admin: React.FC<AdminProps> = ({
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Template Checklist *</label>
                 <select
                   value={assignWorkData.templateId}
-                  onChange={e => setAssignWorkData({ ...assignWorkData, templateId: e.target.value })}
+                  onChange={e => {
+                    const nextTemplateId = e.target.value;
+                    const t = templates.find((tpl: any) => String(tpl.id) === String(nextTemplateId));
+                    const nextAreaId = t?.area?.id ? String(t.area.id) : assignWorkData.areaId;
+                    setAssignWorkData({
+                      ...assignWorkData,
+                      templateId: nextTemplateId,
+                      areaId: nextAreaId,
+                      sessionId: ''
+                    });
+                  }}
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 >
                   <option value="">-- Chọn template --</option>
@@ -1326,6 +1357,28 @@ export const Admin: React.FC<AdminProps> = ({
                 </select>
               </div>
 
+              {/* Session selection (optional but recommended if template has multiple sessions) */}
+              {(() => {
+                const selectedTemplate = templates.find((t: any) => String(t.id) === String(assignWorkData.templateId));
+                const sessions = selectedTemplate?.sessions || [];
+                if (!sessions || sessions.length === 0) return null;
+                return (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Thời điểm thực hiện</label>
+                    <select
+                      value={assignWorkData.sessionId}
+                      onChange={e => setAssignWorkData({ ...assignWorkData, sessionId: e.target.value })}
+                      className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
+                    >
+                      <option value="">{sessions.length > 1 ? '-- Chọn thời điểm --' : 'Mặc định'}</option>
+                      {sessions.map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.time_hhmm}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })()}
+
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Người thực hiện (tùy chọn)</label>
                 <select
@@ -1334,7 +1387,7 @@ export const Admin: React.FC<AdminProps> = ({
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {users.filter(u => u.role === Role.STAFF || u.role === Role.MAINTENANCE).map(u => (
+                  {users.filter(u => u.role === Role.STAFF || u.role === Role.SUPERVISOR).map(u => (
                     <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                   ))}
                 </select>
@@ -1348,7 +1401,7 @@ export const Admin: React.FC<AdminProps> = ({
                   className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-brand-100 outline-none"
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {users.filter(u => u.role === Role.ADMIN || u.role === Role.MANAGER || u.role === Role.SUPERVISOR).map(u => (
+                  {users.filter(u => u.role === Role.ADMIN || u.role === Role.MANAGER).map(u => (
                     <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                   ))}
                 </select>

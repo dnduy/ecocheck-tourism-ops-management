@@ -14,7 +14,7 @@ class RunAccess
 
     public static function isApprover(User $user): bool
     {
-        return $user->hasAnyRole(['admin', 'manager', 'supervisor']);
+        return $user->hasAnyRole(['admin', 'manager']);
     }
 
     public static function canView(User $user, Run $run): bool
@@ -24,7 +24,7 @@ class RunAccess
         }
 
         if ($user->hasRole('supervisor')) {
-            return (int) $run->verified_by === (int) $user->id || (int) $run->assigned_to === (int) $user->id;
+            return (int) $run->assigned_to === (int) $user->id;
         }
 
         return (int) $run->assigned_to === (int) $user->id;
@@ -41,14 +41,6 @@ class RunAccess
 
     public static function canApprove(User $user, Run $run): bool
     {
-        if (self::isAdminOrManager($user)) {
-            return true;
-        }
-
-        if ($user->hasRole('supervisor')) {
-            return (int) $run->verified_by === (int) $user->id;
-        }
-
-        return false;
+        return self::isAdminOrManager($user);
     }
 }

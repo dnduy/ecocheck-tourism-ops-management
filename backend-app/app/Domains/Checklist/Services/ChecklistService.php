@@ -16,21 +16,27 @@ class ChecklistService
     ) {
     }
 
-    public function createOrGetRun(int $areaId, string $date, ?int $assignedTo = null): ChecklistRun
+    public function createOrGetRun(int $areaId, string $date, ?int $assignedTo = null, ?int $templateId = null, ?int $sessionId = null): ChecklistRun
     {
+        $area = Area::findOrFail($areaId);
+        $template = $templateId
+            ? $area->templates()->where('id', $templateId)->firstOrFail()
+            : $area->templates()->where('is_active', true)->firstOrFail();
+
+        $resolvedTemplateId = $template->id;
+        $resolvedSessionId = $sessionId ?? $template->sessions()->orderBy('sort_order')->value('id');
+
         // Note: findByAreaAndDate might return existing run which might have DIFFERENT assignee. 
         // We generally return it as is.
-        $run = $this->runRepository->findByAreaAndDate($areaId, $date);
+        $run = $this->runRepository->findByAreaAndDate($areaId, $date, $resolvedTemplateId, $resolvedSessionId);
 
         if ($run) {
             return $run;
         }
 
-        $area = Area::findOrFail($areaId);
-        $template = $area->templates()->where('is_active', true)->firstOrFail();
-
         return $this->runRepository->create([
-            'template_id' => $template->id,
+            'template_id' => $resolvedTemplateId,
+            'session_id' => $resolvedSessionId,
             'area_id' => $areaId,
             'run_date' => $date,
             'status' => 'open',
@@ -68,7 +74,7 @@ class ChecklistService
         });
 
         return [
-            'run' => $run->only(['id', 'template_id', 'area_id', 'run_date', 'status', 'assigned_to', 'verified_by', 'created_at', 'updated_at']),
+            'run' => $run->only(['id', 'template_id', 'session_id', 'area_id', 'run_date', 'status', 'assigned_to', 'verified_by', 'created_at', 'updated_at']),
             'template' => $template->only(['id', 'name', 'orientation', 'is_active']),
             'sessions' => $template->sessions->sortBy('sort_order')->values(),
             'roles' => $template->roles->sortBy('sort_order')->values(),

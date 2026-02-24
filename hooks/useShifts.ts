@@ -4,9 +4,10 @@ import { Shift } from '../types';
 import { useNotification } from '../contexts/NotificationContext';
 import { shiftService } from '../services/shiftService';
 
-export const useShifts = () => {
+export const useShifts = (options?: { enabled?: boolean }) => {
     const [shifts, setShifts] = useState<Shift[]>([]);
     const { addNotification } = useNotification();
+    const enabled = options?.enabled ?? true;
 
     useEffect(() => {
         const loadShifts = async () => {
@@ -18,8 +19,10 @@ export const useShifts = () => {
                 addNotification('Lỗi', 'Không tải được ca làm việc', 'CRITICAL');
             }
         };
-        loadShifts();
-    }, [addNotification]);
+        if (enabled) {
+            loadShifts();
+        }
+    }, [addNotification, enabled]);
 
     const addShift = async (name: string, startTime: string, endTime: string, type: any, applicableAreaIds: string[]) => {
         const newShift: Shift = { id: '', name, startTime, endTime, type, applicableAreaIds };

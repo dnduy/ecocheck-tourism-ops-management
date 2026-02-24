@@ -19,7 +19,9 @@ class ChecklistRunController
         $run = $this->checklistService->createOrGetRun(
             $request->input('area_id'),
             $request->input('date'),
-            $request->input('assigned_to')
+            $request->input('assigned_to'),
+            $request->input('template_id'),
+            $request->input('session_id')
         );
 
         return response()->json($run, 201);
@@ -27,7 +29,7 @@ class ChecklistRunController
 
     public function index(Request $request)
     {
-        $filters = $request->only(['date', 'area_id', 'assigned_to', 'status']);
+        $filters = $request->only(['date', 'area_id', 'assigned_to', 'status', 'session_id']);
         $runs = $this->checklistService->getRuns($filters);
 
         return response()->json($runs);

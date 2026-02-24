@@ -16,6 +16,7 @@ class StoreRunRequest extends FormRequest
         return [
             'area_id' => ['required', 'exists:areas,id'],
             'checklist_template_id' => ['nullable', 'exists:checklist_templates,id'],
+            'session_id' => ['nullable', 'exists:template_sessions,id'],
             'date' => ['nullable', 'date'],
             'scheduled_for' => ['nullable', 'date'],
         ];

@@ -151,14 +151,28 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
                                     const mapped = actions.mapRunToChecklist(detail, areaList);
 
                                     const columns = (detail as any).columns || detail.template?.columns || [];
-                                    const roles = detail.roles || [];
+                                    const roles = (detail as any).roles || detail.template?.roles || [];
                                     const lowerRole = (user.role || '').toLowerCase();
-                                    const matchedColumn = columns.find((c: any) => {
-                                        const colRoleName = (c.role_name || '').toLowerCase();
-                                        if (colRoleName && colRoleName === lowerRole) return true;
-                                        const colRole = roles.find((r: any) => String(r.id) === String(c.role_id));
-                                        return colRole ? (colRole.name || '').toLowerCase() === lowerRole : false;
-                                    }) || columns[0];
+                                    const runSessionId =
+                                        (detail as any).session_id ||
+                                        (detail as any).run?.session_id ||
+                                        (detail as any).session?.id;
+
+                                    const sessionColumns = runSessionId
+                                        ? columns.filter((c: any) => String(c.session_id) === String(runSessionId))
+                                        : columns;
+
+                                    const matchedColumn =
+                                        sessionColumns.find((c: any) => {
+                                            const colRoleName = (c.role_name || c.role?.name || '').toLowerCase();
+                                            if (colRoleName && colRoleName === lowerRole) return true;
+                                            const colRoleId = c.role_id || c.role?.id;
+                                            if (!colRoleId) return false;
+                                            const colRole = roles.find((r: any) => String(r.id) === String(colRoleId));
+                                            return colRole ? (colRole.name || '').toLowerCase() === lowerRole : false;
+                                        }) ||
+                                        sessionColumns[0] ||
+                                        columns[0];
 
                                     if (!matchedColumn?.id) {
                                         actions.addNotification('Lỗi', 'Checklist chưa có cột đánh giá hợp lệ', 'CRITICAL');
@@ -166,8 +180,15 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
                                     }
 
                                     const columnId = matchedColumn.id;
-                                    const sessionId = matchedColumn?.session_id || detail.sessions?.[0]?.id;
-                                    const roleId = matchedColumn?.role_id || roles.find((r: any) => (r.name || '').toLowerCase() === lowerRole)?.id;
+                                    const sessionId =
+                                        matchedColumn?.session_id ||
+                                        runSessionId ||
+                                        (detail as any).sessions?.[0]?.id ||
+                                        detail.template?.sessions?.[0]?.id;
+                                    const roleId =
+                                        matchedColumn?.role_id ||
+                                        matchedColumn?.role?.id ||
+                                        roles.find((r: any) => (r.name || '').toLowerCase() === lowerRole)?.id;
 
                                     actions.setActiveChecklist(mapped);
                                     actions.setActiveRunContext({ runId, columnId, sessionId, roleId });

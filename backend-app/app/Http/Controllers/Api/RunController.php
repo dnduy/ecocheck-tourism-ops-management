@@ -70,7 +70,14 @@ class RunController extends Controller
 
     public function update(UpdateRunRequest $request, Run $run): JsonResponse
     {
-        $run = $this->runService->updateRun($run, $request->validated());
+        $actor = $request->user();
+        if ($actor && !$actor->hasAnyRole(['admin', 'manager'])) {
+            if ($request->has('assigned_to') || $request->has('verified_by')) {
+                return response()->json(['error' => 'Unauthorized'], 403);
+            }
+        }
+
+        $run = $this->runService->updateRun($run, $request->validated(), $actor);
         return $this->successResponse($run, 'Cập nhật checklist thành công');
     }
 

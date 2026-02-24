@@ -82,21 +82,27 @@ export const mapRunToChecklist = (runData: any, areaList: Area[]): Checklist => 
     // Map from workStatus (source of truth) to ChecklistStatus (UI)
     if (workStatus === WorkStatus.IN_PROGRESS) mappedStatus = ChecklistStatus.IN_PROGRESS;
     else if (workStatus === WorkStatus.COMPLETED || workStatus === WorkStatus.NEEDS_REVIEW) mappedStatus = ChecklistStatus.COMPLETED;
-    else if (workStatus === WorkStatus.APPROVED || workStatus === WorkStatus.REJECTED) mappedStatus = ChecklistStatus.REVIEWED;
+    else if (workStatus === WorkStatus.APPROVED) mappedStatus = ChecklistStatus.REVIEWED;
+    else if (workStatus === WorkStatus.REJECTED) mappedStatus = ChecklistStatus.IN_PROGRESS;
     // Fallback or legacy status check only if workStatus didn't catch it (optional)
     else if (String(run.status || '').toLowerCase() === 'reviewed') mappedStatus = ChecklistStatus.REVIEWED;
+
+    const sessionTime = run.session?.time_hhmm || run.session_time || runData.session?.time_hhmm;
+    const shiftLabel = sessionTime ? `Ca ${sessionTime}` : 'Ca A';
 
     return {
         id: String(run.id),
         templateName: template?.name || 'Checklist',
         area,
-        shift: 'Ca A',
+        shift: shiftLabel,
         date: run.run_date || run.date || new Date().toISOString().split('T')[0],
         status: mappedStatus,
         workStatus: workStatus,
         items: mappedItems,
         assignedTo: getIdFromUser(run.assigned_to),
         verifiedBy: getIdFromUser(run.verified_by) || undefined,
+        sessionId: run.session_id,
+        sessionTime: sessionTime,
         completedAt: run.completed_at,
         verifiedAt: run.verified_at
     } as Checklist;

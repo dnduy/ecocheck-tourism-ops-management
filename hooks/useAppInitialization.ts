@@ -200,7 +200,7 @@ export const useAppInitialization = (user: User | null, isAuthLoading: boolean, 
         setRunsFetchId(requestId);
         try {
             const currentUser = userOverride || user;
-            const params: any = currentUser && currentUser.role === Role.STAFF
+            const params: any = currentUser && (currentUser.role === Role.STAFF || currentUser.role === Role.SUPERVISOR)
                 ? { assigned_to: Number(currentUser.id), per_page: 1000 }
                 : { per_page: 1000 };
             const resp = await runService.list(params);
@@ -277,16 +277,16 @@ export const useAppInitialization = (user: User | null, isAuthLoading: boolean, 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user, isAuthLoading]);
 
-    // Polling for supervisor reviews
+    // Polling for pending reviews (manager/admin only)
     useEffect(() => {
-        const isSupervisor = user && (user.role === Role.SUPERVISOR || user.role === Role.MANAGER || user.role === Role.ADMIN);
-        if (!isSupervisor) {
+        const canReview = user && (user.role === Role.MANAGER || user.role === Role.ADMIN);
+        if (!canReview) {
             setPendingReviewCount(0);
             return;
         }
         const fetchPending = async () => {
             try {
-                const resp = await runService.list({ status: 'completed' });
+                const resp = await runService.list({ status: 'needs_review' });
                 const runs = (resp as any).data || resp || [];
                 setPendingReviewCount(Array.isArray(runs) ? runs.length : 0);
             } catch (e) {

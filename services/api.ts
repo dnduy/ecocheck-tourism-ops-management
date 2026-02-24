@@ -24,6 +24,13 @@ export class ApiError extends Error {
   }
 }
 
+export const unwrapApiData = <T = any>(response: any): T => {
+  if (response && typeof response === 'object' && 'data' in response) {
+    return response.data as T;
+  }
+  return response as T;
+};
+
 const parseMessage = (errorData: any, status: number) => {
   if (!errorData) return '';
   if (typeof errorData === 'string') return errorData;

@@ -19,6 +19,7 @@ class UpdateRunRequest extends FormRequest
             'completed_at' => ['nullable', 'date'],
             'assigned_to' => ['nullable', 'exists:users,id'],
             'verified_by' => ['nullable', 'exists:users,id'],
+            'session_id' => ['nullable', 'exists:template_sessions,id'],
         ];
     }
 }

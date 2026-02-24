@@ -9,6 +9,8 @@ use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Domains\Checklist\Models\ChecklistRun;
+use App\Domains\Checklist\Models\RunSignoff;
 
 class User extends Authenticatable
 {
@@ -45,6 +47,21 @@ class User extends Authenticatable
     public function runs(): HasMany
     {
         return $this->hasMany(Run::class, 'created_by');
+    }
+
+    public function assignedRuns(): HasMany
+    {
+        return $this->hasMany(ChecklistRun::class, 'assigned_to');
+    }
+
+    public function verifiedRuns(): HasMany
+    {
+        return $this->hasMany(ChecklistRun::class, 'verified_by');
+    }
+
+    public function signoffs(): HasMany
+    {
+        return $this->hasMany(RunSignoff::class, 'signed_by');
     }
 
     public function incidentsReported(): HasMany

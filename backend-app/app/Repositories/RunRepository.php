@@ -13,7 +13,7 @@ class RunRepository implements RunRepositoryInterface
     {
         return Run::where('assigned_to', $userId)
             ->where('status', '!=', 'archived')
-            ->with(['area', 'template', 'signoffs'])
+            ->with(['area', 'template', 'session', 'signoffs'])
             ->orderByDesc('updated_at')
             ->get();
     }
@@ -22,7 +22,7 @@ class RunRepository implements RunRepositoryInterface
     {
         return Run::where('verified_by', $verifierId)
             ->where('work_status', 'needs_review')
-            ->with(['assignedUser', 'area', 'template'])
+            ->with(['assignedUser', 'area', 'template', 'session'])
             ->get();
     }
 
@@ -52,6 +52,7 @@ class RunRepository implements RunRepositoryInterface
             'area',
             'template.groups.items',
             'template.columns',
+            'session',
             'entries',
             'assignedUser',
             'verifiedUser'
@@ -60,6 +61,9 @@ class RunRepository implements RunRepositoryInterface
         // Filters
         if (isset($filters['area_id'])) {
             $query->where('area_id', $filters['area_id']);
+        }
+        if (isset($filters['session_id'])) {
+            $query->where('session_id', $filters['session_id']);
         }
         if (isset($filters['status'])) {
             $status = strtolower($filters['status']);
@@ -88,13 +92,9 @@ class RunRepository implements RunRepositoryInterface
 
         // Role-based filtering
         if ($user) {
-            if ($user->hasRole('staff')) {
+            if ($user->hasRole('staff') || $user->hasRole('supervisor')) {
+                // Người làm chỉ thấy việc của mình
                 $query->where('assigned_to', $user->id);
-            } elseif ($user->hasRole('supervisor')) {
-                $query->where(function ($q) use ($user) {
-                    $q->where('verified_by', $user->id)
-                        ->orWhere('assigned_to', $user->id);
-                });
             }
         }
 
@@ -130,6 +130,7 @@ class RunRepository implements RunRepositoryInterface
             ->with([
                 'area',
                 'template',
+                'session',
                 'assignedUser',
                 'verifiedUser',
                 'signoffs.user'
@@ -144,6 +145,7 @@ class RunRepository implements RunRepositoryInterface
             ->with([
                 'area',
                 'template',
+                'session',
                 'assignedUser',
                 'verifiedUser',
                 'signoffs.user'

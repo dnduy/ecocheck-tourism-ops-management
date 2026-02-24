@@ -14,8 +14,11 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+  const isGoogleConfigured = googleClientId && !googleClientId.includes('YOUR_GOOGLE_CLIENT_ID');
 
   useEffect(() => {
+    if (!isGoogleConfigured) return;
     const handleCredentialResponse = async (response: any) => {
       try {
         setIsLoading(true);
@@ -48,7 +51,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const googleObj = (window as any).google;
     if (googleObj) {
       googleObj.accounts.id.initialize({
-        client_id: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com", 
+        client_id: googleClientId, 
         callback: handleCredentialResponse,
         auto_select: false,
       });
@@ -58,7 +61,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         { theme: "outline", size: "large", width: 280, text: "signin_with" }
       );
     }
-  }, [onLogin]);
+  }, [onLogin, googleClientId, isGoogleConfigured]);
 
   const handleDirectEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +108,19 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </div>
 
         <div className="space-y-4">
-          <div className="flex justify-center" id="googleBtn"></div>
+          <div className="flex justify-center">
+            {isGoogleConfigured ? (
+              <div id="googleBtn"></div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setError("Google login chưa được cấu hình. Vui lòng dùng Email/Password.")}
+                className="w-full py-3 px-4 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 flex items-center justify-center transition-colors"
+              >
+                Đăng nhập bằng Google
+              </button>
+            )}
+          </div>
           
           <div className="relative py-2">
             <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-gray-100"></span></div>

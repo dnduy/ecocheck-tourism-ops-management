@@ -63,8 +63,12 @@ const countByStatus = (checklists: Checklist[]): { pending: number; inProgress: 
 };
 
 export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChecklist, currentUser, users, onRefresh }) => {
+  const isStaffLike = currentUser.role === Role.STAFF || currentUser.role === Role.SUPERVISOR;
+  const canReview = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
+  const canSeeAll = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
+
   const [filter, setFilter] = useState<'ALL' | 'MINE' | 'TO_VERIFY' | 'COMPLETED'>(
-    currentUser.role === Role.STAFF ? 'MINE' : (currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER || currentUser.role === Role.SUPERVISOR ? 'TO_VERIFY' : 'ALL')
+    isStaffLike ? 'MINE' : (canReview ? 'TO_VERIFY' : 'MINE')
   );
   const [sortBy, setSortBy] = useState<'DATE' | 'STATUS' | 'AREA'>('DATE');
 
@@ -82,9 +86,9 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
   // History Modal State
   const [historyTarget, setHistoryTarget] = useState<{ templateName: string, areaId: string, areaName: string } | null>(null);
 
-  // Refresh data when component mounts (for STAFF to see newly assigned tasks)
+  // Refresh data when component mounts (for staff/supervisor to see newly assigned tasks)
   useEffect(() => {
-    if (onRefresh && currentUser.role === Role.STAFF) {
+    if (onRefresh && (currentUser.role === Role.STAFF || currentUser.role === Role.SUPERVISOR)) {
       onRefresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,17 +112,21 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
     }
 
     // 2. Tab Filter
-    if (filter === 'ALL') return true;
-    if (filter === 'MINE') return String(c.assignedTo) === String(currentUser.id);
-    // For supervisors/managers, show all completed runs awaiting verification
-    if (filter === 'TO_VERIFY') {
-      // Show runs that are completed and need review
-      // Also show runs that verifier is assigned to current user
-      const needsReview = c.workStatus === WorkStatus.NEEDS_REVIEW;
-      const completed = c.status === ChecklistStatus.COMPLETED || c.workStatus === WorkStatus.COMPLETED;
-      return completed || (needsReview && String(c.verifiedBy) === String(currentUser.id));
+    if (filter === 'ALL') {
+      return canSeeAll ? true : String(c.assignedTo) === String(currentUser.id);
     }
-    if (filter === 'COMPLETED') return c.status === ChecklistStatus.REVIEWED;
+    if (filter === 'MINE') return String(c.assignedTo) === String(currentUser.id);
+    // For admin/manager, show all runs awaiting review
+    if (filter === 'TO_VERIFY') {
+      if (!canReview) return false;
+      return c.workStatus === WorkStatus.NEEDS_REVIEW;
+    }
+    if (filter === 'COMPLETED') {
+      if (!canSeeAll) {
+        return c.status === ChecklistStatus.REVIEWED && String(c.assignedTo) === String(currentUser.id);
+      }
+      return c.status === ChecklistStatus.REVIEWED;
+    }
     return true;
   });
 
@@ -164,21 +172,24 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
       {/* Filters with Counters */}
       <div className="flex space-x-2 mb-4 overflow-x-auto pb-2 scrollbar-hide shrink-0">
         {(() => {
-          const allCount = checklists.length;
           const mineCount = checklists.filter(c => String(c.assignedTo) === String(currentUser.id)).length;
+          const allCount = canSeeAll ? checklists.length : mineCount;
           const toVerifyCount = checklists.filter(c => {
-            const needsReview = c.workStatus === WorkStatus.NEEDS_REVIEW;
-            const completed = c.status === ChecklistStatus.COMPLETED || c.workStatus === WorkStatus.COMPLETED;
-            return completed || (needsReview && String(c.verifiedBy) === String(currentUser.id));
+            if (!canReview) return false;
+            return c.workStatus === WorkStatus.NEEDS_REVIEW;
           }).length;
-          const completedCount = checklists.filter(c => c.status === ChecklistStatus.REVIEWED).length;
+          const completedCount = canSeeAll
+            ? checklists.filter(c => c.status === ChecklistStatus.REVIEWED).length
+            : checklists.filter(c => c.status === ChecklistStatus.REVIEWED && String(c.assignedTo) === String(currentUser.id)).length;
 
-          return [
-            { id: 'ALL', label: 'Tất cả', count: allCount },
+          const filters = [
+            ...(canSeeAll ? [{ id: 'ALL', label: 'Tất cả', count: allCount }] : []),
             { id: 'MINE', label: 'Việc của tôi', count: mineCount },
-            { id: 'TO_VERIFY', label: 'Cần duyệt', count: toVerifyCount },
+            ...(canReview ? [{ id: 'TO_VERIFY', label: 'Cần duyệt', count: toVerifyCount }] : []),
             { id: 'COMPLETED', label: 'Lịch sử', count: completedCount }
-          ].map((f) => (
+          ];
+
+          return filters.map((f) => (
             <button
               key={f.id}
               onClick={() => setFilter(f.id as any)}

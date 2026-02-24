@@ -5,7 +5,7 @@ import { User, Role } from '../../types';
 import { useNotification } from '../../contexts/NotificationContext';
 import { mapApiUser } from '../../services/mappers';
 
-export const useUsers = () => {
+export const useUsers = (options?: { enabled?: boolean }) => {
     return useQuery({
         queryKey: ['users'],
         queryFn: async () => {
@@ -13,6 +13,7 @@ export const useUsers = () => {
             return (resp || []).map(mapApiUser);
         },
         staleTime: 1000 * 60 * 5,
+        enabled: options?.enabled ?? true,
     });
 };
 

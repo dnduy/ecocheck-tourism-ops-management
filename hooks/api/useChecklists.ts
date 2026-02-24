@@ -5,8 +5,11 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { useAreas } from './useAreas';
 import { mapRunToChecklist } from '../../services/mappers';
 
-export const useChecklists = (filters?: { assigned_to?: number; date?: string; status?: string }) => {
-    const { data: areas = [] } = useAreas();
+export const useChecklists = (
+    filters?: { assigned_to?: number; date?: string; status?: string },
+    options?: { enabled?: boolean }
+) => {
+    const { data: areas = [] } = useAreas({ enabled: options?.enabled });
 
     return useQuery({
         queryKey: ['checklists', filters, areas],
@@ -17,6 +20,7 @@ export const useChecklists = (filters?: { assigned_to?: number; date?: string; s
         },
         // enabled: areas.length > 0, // Removed to allow fetching without areas
         refetchInterval: 60000,
+        enabled: options?.enabled ?? true,
     });
 };
 

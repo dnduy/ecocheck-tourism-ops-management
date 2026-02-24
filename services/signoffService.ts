@@ -1,4 +1,4 @@
-import { apiPut } from './api';
+import { apiPut, unwrapApiData } from './api';
 
 export interface SignoffData {
   run_id: number;
@@ -19,6 +19,7 @@ export interface SignoffResponse {
 
 export const signoffService = {
   async create(data: SignoffData): Promise<SignoffResponse> {
-    return apiPut<SignoffResponse>('/signoffs', data);
+    const res = await apiPut<SignoffResponse | { data: SignoffResponse }>('/signoffs', data);
+    return unwrapApiData<SignoffResponse>(res);
   }
 };
