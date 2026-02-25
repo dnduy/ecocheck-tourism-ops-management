@@ -3,18 +3,36 @@ import React, { useState, useMemo, useRef } from 'react';
 import { Incident, IncidentStatus, IncidentPriority, User, Area } from '../types';
 import { ChevronDown, ChevronRight, CheckCircle, Hammer, Plus, X, AlertTriangle, User as UserIcon, Wrench, Zap, Droplets, Truck, Armchair, Flower2 } from 'lucide-react';
 import { sanitizeInput } from '../services/validation';
+import { useIncidentMutations } from '../hooks/api/useIncidents';
+import { useAreas } from '../hooks/api/useAreas';
 
 interface IncidentsProps {
   incidents: Incident[];
   currentUser: User;
   users?: User[];
   areas?: Area[];
-  onUpdateStatus: (id: string, status: IncidentStatus, resolutionNote?: string) => void;
-  onCreateIncident: (data: { title: string; description: string; area: string; priority: IncidentPriority; reportedBy: string }) => void;
-  onAssignIncident?: (id: string, userId: number) => void;
 }
 
-export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, users = [], areas = [], onUpdateStatus, onCreateIncident, onAssignIncident }) => {
+export const Incidents: React.FC<IncidentsProps> = ({ incidents, currentUser, users = [], areas: areasProp = [] }) => {
+  const { createIncident, updateIncident, assignIncident } = useIncidentMutations();
+  const { data: areasData = [] } = useAreas();
+  const areas = areasProp.length ? areasProp : areasData;
+
+  const onUpdateStatus = async (id: string | number, status: IncidentStatus, resolutionNote?: string) => {
+    await updateIncident.mutateAsync({ id: String(id), data: { status, resolution_note: resolutionNote } });
+  };
+  const onCreateIncident = async (data: { title: string; description: string; area: string; priority: IncidentPriority; reportedBy: string }) => {
+    const severity = (data.priority === IncidentPriority.CRITICAL ? 'high' : data.priority.toLowerCase()) as 'low' | 'medium' | 'high';
+    await createIncident.mutateAsync({
+      title: data.title,
+      description: data.description,
+      area_id: isNaN(Number(data.area)) ? (areas.find(a => a.name === data.area)?.id || 0) : Number(data.area),
+      severity,
+    });
+  };
+  const onAssignIncident = async (id: string | number, userId: number) => {
+    await assignIncident.mutateAsync({ id: String(id), userId });
+  };
   const [selectedIncident, setSelectedIncident] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [detailIncident, setDetailIncident] = useState<Incident | null>(null);

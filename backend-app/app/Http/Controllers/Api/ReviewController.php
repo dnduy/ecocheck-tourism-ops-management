@@ -4,6 +4,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Enums\WorkStatus;
 use App\Models\Run;
 use App\Interfaces\RunServiceInterface;
 use Illuminate\Http\JsonResponse;
@@ -30,25 +31,14 @@ class ReviewController extends Controller
      */
     public function getPendingReviews(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!$user || !\App\Support\RunAccess::isAdminOrManager($user)) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-        // Paginator is returned from service
-        $runs = $this->runService->getPendingReviews($user, 20);
+        $this->authorize('viewAny', Run::class);
+        $runs = $this->runService->getPendingReviews($request->user(), 20);
         return $this->successResponse($runs, 'Lấy danh sách cần duyệt thành công');
     }
 
-    /**
-     * Xem chi tiết run cần duyệt
-     */
     public function showForReview(Run $run, Request $request): JsonResponse
     {
-        $user = $request->user();
-        if (!$user || !\App\Support\RunAccess::canApprove($user, $run)) {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
-
+        $this->authorize('viewForReview', $run);
         $run = $this->runService->getRunDetail($run);
         return $this->successResponse($run, 'Lấy chi tiết checklist thành công');
     }
@@ -58,6 +48,7 @@ class ReviewController extends Controller
      */
     public function startWork(Run $run, Request $request): JsonResponse
     {
+        $this->authorize('startWork', $run);
         try {
             $run = $this->runService->startWork($run, $request->user());
             return $this->successResponse($run, '✅ Bắt đầu làm checklist');
@@ -71,6 +62,7 @@ class ReviewController extends Controller
      */
     public function completeWork(Run $run, Request $request): JsonResponse
     {
+        $this->authorize('completeWork', $run);
         try {
             $run = $this->runService->completeWork($run, $request->user());
             return $this->successResponse($run, '✅ Đã hoàn thành checklist');
@@ -84,6 +76,7 @@ class ReviewController extends Controller
      */
     public function requestReview(Run $run, Request $request): JsonResponse
     {
+        $this->authorize('requestReview', $run);
         try {
             $run = $this->runService->requestReview($run, $request->user());
             return $this->successResponse($run, '✅ Đã yêu cầu duyệt');
@@ -97,10 +90,8 @@ class ReviewController extends Controller
      */
     public function approve(Run $run, Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'review_note' => 'nullable|string|max:500'
-        ]);
-
+        $this->authorize('approve', $run);
+        $validated = $request->validate(['review_note' => 'nullable|string|max:500']);
         try {
             $run = $this->runService->approveRun($run, $request->user(), $validated['review_note'] ?? null);
             return $this->successResponse($run, '✅ Đã phê duyệt checklist');
@@ -114,10 +105,8 @@ class ReviewController extends Controller
      */
     public function reject(Run $run, Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'review_note' => 'required|string|max:1000'
-        ]);
-
+        $this->authorize('reject', $run);
+        $validated = $request->validate(['review_note' => 'required|string|max:1000']);
         try {
             $run = $this->runService->rejectRun($run, $request->user(), $validated['review_note']);
             return $this->successResponse($run, '❌ Đã từ chối checklist');
@@ -131,6 +120,7 @@ class ReviewController extends Controller
      */
     public function resubmit(Run $run, Request $request): JsonResponse
     {
+        $this->authorize('resubmit', $run);
         try {
             $run = $this->runService->resubmitRun($run, $request->user());
             return $this->successResponse($run, '✅ Đã gửi lại để duyệt');

@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Enums\WorkStatus;
 use App\Interfaces\Repositories\RunRepositoryInterface;
 use App\Models\Run;
 use Illuminate\Support\Collection;
@@ -67,22 +68,10 @@ class RunRepository implements RunRepositoryInterface
         }
         if (isset($filters['status'])) {
             $status = strtolower($filters['status']);
-            $map = [
-                'open' => 'pending',
-                'draft' => 'pending',
-                'active' => 'in_progress',
-                'done' => 'completed',
-                'completed' => 'completed',
-                'pending' => 'pending',
-                'in_progress' => 'in_progress',
-                'needs_review' => 'needs_review',
-                'approved' => 'approved',
-                'rejected' => 'rejected',
-            ];
-            $normalized = $map[$status] ?? $status;
-            if (in_array($normalized, ['pending', 'in_progress', 'completed', 'needs_review', 'approved', 'rejected'], true)) {
-                $query->where('work_status', $normalized);
-            } else {
+            try {
+                $ws = WorkStatus::fromLegacy($status);
+                $query->where('work_status', $ws->value);
+            } catch (\ValueError $e) {
                 $query->where('status', $status);
             }
         }

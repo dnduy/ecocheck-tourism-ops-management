@@ -6,6 +6,14 @@ import { runService } from '../services/runService';
 import { AdminStaffStats } from '../components/AdminStaffStats';
 import { AdminSupervisorStats } from '../components/AdminSupervisorStats';
 import { Plus, X, Users, ClipboardList, UserCheck, AlertCircle, Lock, Trash2, Eye, EyeOff, Edit, Edit2, PlusCircle, MinusCircle, ShieldCheck, KeyRound, MapPin, QrCode, Clock, Layers, TrendingUp, BarChart3, FileSpreadsheet } from 'lucide-react';
+import { useUserMutations } from '../hooks/api/useUsers';
+import { useChecklistMutations } from '../hooks/api/useChecklists';
+import { useAreaMutations } from '../hooks/api/useAreas';
+import { useTemplateMutations } from '../hooks/api/useTemplates';
+import { useShifts as useShiftsMutation } from '../hooks/useShifts';
+import { useQueryClient } from '@tanstack/react-query';
+import { useNotification } from '../contexts/NotificationContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AdminProps {
   currentUser: User;
@@ -14,34 +22,84 @@ interface AdminProps {
   areas?: Area[];
   templates?: any[];
   shifts?: Shift[];
-  onAddUser: (name: string, email: string, role: Role, password?: string) => void;
-  onUpdateUser: (userId: string, updates: Partial<User>) => void;
-  onDeleteUser: (userId: string) => void;
-  onAddChecklist: (templateName: string, areaId: string, shift: string, items: { text: string, isCritical: boolean }[], assignedTo?: string, verifiedBy?: string) => void;
-  onAssignChecklist?: (checklistId: string, updates: { assignedTo?: string, verifiedBy?: string }) => void;
-  onAddArea?: (name: string, type: string) => void;
-  onUpdateArea?: (id: string, name: string, type: string) => void;
-  onDeleteArea?: (id: string) => void;
-  onAddShift?: (name: string, startTime: string, endTime: string, type: any, applicableAreaIds: string[]) => void;
-  onDeleteShift?: (id: string) => void;
-  onCloneDaily?: () => void;
-  onCreateTemplate?: (data: { areaId: string; name: string; description?: string; groupTitle: string; itemTitles: string[]; columnLabel: string }) => void;
-  onRunsChanged?: () => void;
-  onTemplatesChanged?: () => void;
 }
 
 export const Admin: React.FC<AdminProps> = ({
   currentUser,
-  users, checklists = [], areas = [], templates = [], shifts = [],
-  onAddUser, onUpdateUser, onDeleteUser,
-  onAddChecklist, onAssignChecklist,
-  onAddArea, onUpdateArea, onDeleteArea,
-  onAddShift, onDeleteShift,
-  onCloneDaily,
-  onCreateTemplate,
-  onRunsChanged,
-  onTemplatesChanged
+  users, checklists = [], areas: areasProp = [], templates: templatesProp = [], shifts: shiftsProp = []
 }) => {
+  // --- Mutation hooks (own data ownership) ---
+  const queryClient = useQueryClient();
+  const { addNotification } = useNotification();
+  const { updateUser: updateAuthUser } = useAuth();
+  const { createUser, updateUser: updateUserMutation, deleteUser } = useUserMutations();
+  const { createChecklist, assignChecklist } = useChecklistMutations();
+  const { createArea, updateArea, deleteArea } = useAreaMutations();
+  const { createTemplate } = useTemplateMutations();
+  const { shifts: shiftsFromHook, addShift: addShiftFn, deleteShift: deleteShiftFn } = useShiftsMutation();
+
+  const areas = areasProp.length ? areasProp : [];
+  const templates = templatesProp;
+  const shifts = shiftsProp.length ? shiftsProp : shiftsFromHook;
+
+  // --- Local callback wrappers (preserve existing call sites below) ---
+  const onAddUser = async (name: string, email: string, role: Role, password?: string) => {
+    await createUser.mutateAsync({ name, email, role, password });
+  };
+  const onUpdateUser = async (userId: string, updates: Partial<User>) => {
+    await updateUserMutation.mutateAsync({ id: userId, data: updates });
+    if (String(userId) === String(currentUser.id)) {
+      updateAuthUser({ ...currentUser, ...updates });
+    }
+  };
+  const onDeleteUser = async (userId: string) => {
+    await deleteUser.mutateAsync(userId);
+  };
+  const onAddChecklist = async (templateName: string, areaId: string, _shift: string, _items: any[], assignedTo?: string, verifiedBy?: string) => {
+    const run = await createChecklist.mutateAsync({ areaId: Number(areaId), date: new Date().toISOString().split('T')[0] });
+    if (assignedTo || verifiedBy) {
+      const runId = (run as any).id || (run as any).run?.id;
+      await assignChecklist.mutateAsync({ id: runId, data: { assigned_to: Number(assignedTo), verified_by: Number(verifiedBy) } });
+    }
+  };
+  const onAssignChecklist = async (checklistId: string, updates: { assignedTo?: string; verifiedBy?: string }) => {
+    await assignChecklist.mutateAsync({ id: Number(checklistId), data: { assigned_to: Number(updates.assignedTo), verified_by: Number(updates.verifiedBy) } });
+  };
+  const onAddArea = async (name: string, type: string) => {
+    await createArea.mutateAsync({ name, type });
+  };
+  const onUpdateArea = async (id: string, name: string, type: string) => {
+    await updateArea.mutateAsync({ id: Number(id), data: { name, type } });
+  };
+  const onDeleteArea = async (id: string) => {
+    await deleteArea.mutateAsync(Number(id));
+  };
+  const onAddShift = async (name: string, startTime: string, endTime: string, type: any, applicableAreaIds: string[]) => {
+    await addShiftFn(name, startTime, endTime, type, applicableAreaIds);
+  };
+  const onDeleteShift = async (id: string) => {
+    await deleteShiftFn(id);
+  };
+  const onCloneDaily = async () => {
+    queryClient.invalidateQueries({ queryKey: ['checklists'] });
+    addNotification('Đã làm mới', 'Đã cập nhật danh sách', 'SUCCESS');
+  };
+  const onCreateTemplate = async (data: { areaId: string; name: string; description?: string; groupTitle: string; itemTitles: string[]; columnLabel: string }) => {
+    const payload = {
+      area_id: Number(data.areaId),
+      name: data.name,
+      description: data.description,
+      version: 'v1',
+      is_active: true,
+      groups: [{ title: data.groupTitle, items: data.itemTitles.map((t: string) => ({ title: t })) }],
+      columns: [{ label: data.columnLabel || 'Ca A', type: 'text' }]
+    };
+    await createTemplate.mutateAsync(payload);
+    queryClient.invalidateQueries({ queryKey: ['templates'] });
+  };
+  const onRunsChanged = () => queryClient.invalidateQueries({ queryKey: ['checklists'] });
+  const onTemplatesChanged = () => queryClient.invalidateQueries({ queryKey: ['templates'] });
+
   const canAssign = currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER;
 
   // Determine available tabs based on Role

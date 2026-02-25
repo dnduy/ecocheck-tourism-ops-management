@@ -2,64 +2,17 @@
 
 namespace App\Domains\Checklist\Models;
 
-use App\Models\User;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-
-class ChecklistRun extends Model
+/**
+ * ChecklistRun - Backward-compatibility alias for App\Models\Run.
+ *
+ * Lớp này giữ lại để làm việc với ChecklistRunRepository và ChecklistService
+ * trong layer Domain cũ. Tất cả logic mới nên dùng App\Models\Run trực tiếp.
+ *
+ * @deprecated Sử dụng App\Models\Run trực tiếp trong code mới.
+ */
+class ChecklistRun extends \App\Models\Run
 {
-    protected $fillable = [
-        'template_id',
-        'session_id',
-        'area_id',
-        'run_date',
-        'status',
-        'assigned_to',
-        'verified_by',
-        'work_status',
-        'started_at',
-        'completed_at',
-        'review_requested_at',
-        'created_by',
-    ];
-
-    protected $casts = [
-        'run_date' => 'date',
-    ];
-
-    public function template(): BelongsTo
-    {
-        return $this->belongsTo(ChecklistTemplate::class, 'template_id');
-    }
-
-    public function session(): BelongsTo
-    {
-        return $this->belongsTo(TemplateSession::class, 'session_id');
-    }
-
-    public function area(): BelongsTo
-    {
-        return $this->belongsTo(Area::class);
-    }
-
-    public function assignedTo(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'assigned_to');
-    }
-
-    public function verifiedBy(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'verified_by');
-    }
-
-    public function entries(): HasMany
-    {
-        return $this->hasMany(ChecklistEntry::class, 'run_id');
-    }
-
-    public function signoffs(): HasMany
-    {
-        return $this->hasMany(RunSignoff::class, 'run_id');
-    }
+    // Inherit all from Run — same table, same relationships, same casts.
+    // This alias exists only for backward compatibility with Domains/Checklist layer.
 }
+

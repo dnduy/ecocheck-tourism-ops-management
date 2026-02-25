@@ -7,18 +7,22 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, ResponsiveContainer, Cell } from 'recharts';
 import { dashboardService, type DashboardStats, type WeeklyStats } from '../services/dashboardService';
+import { useUIStore } from '../stores/useUIStore';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DashboardProps {
   user: User;
   users: User[];
   checklists: Checklist[];
   incidents: Incident[];
-  onChangeTab: (tab: string) => void;
-  onLogout: () => void;
-  onOpenScanner: () => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, users, checklists, incidents, onChangeTab, onLogout, onOpenScanner }) => {
+export const Dashboard: React.FC<DashboardProps> = React.memo(({ user, users, checklists, incidents }) => {
+  const { setCurrentTab, setShowScanner } = useUIStore();
+  const { logout } = useAuth();
+  const onChangeTab = setCurrentTab;
+  const onOpenScanner = () => setShowScanner(true);
+  const onLogout = () => { logout(); setCurrentTab('dashboard'); };
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [weekly, setWeekly] = useState<WeeklyStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);

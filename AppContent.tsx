@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Login } from './pages/Login';
 import { Navigation } from './components/Navigation';
 import { Sidebar } from './components/Sidebar';
@@ -7,59 +7,53 @@ import { QRScanner } from './components/QRScanner';
 import { AppRoutes } from './routes/AppRoutes';
 import { useAuth } from './contexts/AuthContext';
 import { useNotification } from './contexts/NotificationContext';
+import { useUIStore } from './stores/useUIStore';
 
-// Hooks
-import { useIncidents, useIncidentMutations } from './hooks/api/useIncidents';
-import { useChecklists, useChecklistMutations } from './hooks/api/useChecklists';
-import { useUsers, useUserMutations } from './hooks/api/useUsers';
-import { useAreas, useAreaMutations } from './hooks/api/useAreas';
-import { useTemplates, useTemplateMutations } from './hooks/api/useTemplates';
+// Data hooks
+import { useIncidents } from './hooks/api/useIncidents';
+import { useChecklists } from './hooks/api/useChecklists';
+import { useUsers } from './hooks/api/useUsers';
+import { useAreas } from './hooks/api/useAreas';
+import { useTemplates } from './hooks/api/useTemplates';
 import { useShifts } from './hooks/useShifts';
 import { useStaffNotifications } from './hooks/useStaffNotifications';
 
-import { Role, Checklist, User } from './types';
+import { Role, User, ChecklistStatus } from './types';
 import { Bell, AlertTriangle, X, CheckCircle } from 'lucide-react';
-import { runService } from './services/runService';
-import { mapRunToChecklist } from './services/mappers';
-import { ChecklistStatus } from './types';
 
 export default function AppContent() {
-  // --- UI STATE ---
-  const [currentTab, setCurrentTab] = useState('dashboard');
-  const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
-  const [showScanner, setShowScanner] = useState(false);
-  const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
-  const [activeRunContext, setActiveRunContext] = useState<{ runId: number; columnId: number; sessionId?: number; roleId?: number } | null>(null);
+  // --- UI STATE (from Zustand store) ---
+  const {
+    currentTab,
+    setCurrentTab,
+    activeChecklist,
+    showScanner,
+    setShowScanner,
+  } = useUIStore();
+
+  const activeChecklistId = activeChecklist?.id ?? null;
 
   // --- CONTEXT HOOKS ---
   const { user, isAuthLoading, login, updateUser, logout } = useAuth();
   const { notifications, removeNotification, addNotification } = useNotification();
   const authEnabled = !isAuthLoading && !!user;
 
-  // --- DATA HOOKS (TanStack Query) ---
+  // --- DATA HOOKS (TanStack Query — server state) ---
   const { data: incidents = [] } = useIncidents({ enabled: authEnabled });
-  // Filter runs for staff automatically if needed, simplified here to fetch all (cached)
-  // Optimization: pass currentUser to useChecklists to filter at query level if backend supports it
-  const { data: checklists = [], refetch: refetchChecklists } = useChecklists(
-    (user?.role === Role.STAFF || user?.role === Role.SUPERVISOR) ? { assigned_to: Number(user.id) } : undefined,
+  const { data: checklists = [] } = useChecklists(
+    (user?.role === Role.STAFF || user?.role === Role.SUPERVISOR)
+      ? { assigned_to: Number(user.id) }
+      : undefined,
     { enabled: authEnabled }
   );
   const { data: users = [] } = useUsers({ enabled: authEnabled });
-  const { data: areas = [], refetch: refetchAreas } = useAreas({ enabled: authEnabled });
-  const { data: templates = [], refetch: refetchTemplates } = useTemplates({ enabled: authEnabled });
-  const { shifts, addShift, deleteShift } = useShifts({ enabled: authEnabled });
+  const { data: areas = [] } = useAreas({ enabled: authEnabled });
+  const { data: templates = [] } = useTemplates({ enabled: authEnabled });
+  const { shifts } = useShifts({ enabled: authEnabled });
 
-  // --- MUTATIONS ---
-  const { createIncident, updateIncident, assignIncident } = useIncidentMutations();
-  const { createChecklist, assignChecklist } = useChecklistMutations();
-  const { createUser, updateUser: updateUserApi, deleteUser } = useUserMutations();
-  const { createArea, updateArea, deleteArea } = useAreaMutations();
-  const { createTemplate } = useTemplateMutations();
-
-  // --- HELPERS ---
   const { notifyStaffSummary } = useStaffNotifications(user);
 
-  // --- HANDLERS ---
+  // --- LOGIN / LOGOUT ---
   const handleLogin = (userFromLogin: User) => {
     login(userFromLogin);
     setCurrentTab('dashboard');
@@ -71,117 +65,7 @@ export default function AppContent() {
     setCurrentTab('dashboard');
   };
 
-  const actions = {
-    setCurrentTab,
-    setActiveChecklist,
-    setActiveRunContext,
-    handleLogout,
-    setShowScanner,
-    // Adapters for AppRoutes which expects Promise<void>
-    loadRunsFromApi: async () => { await refetchChecklists(); },
-    loadTemplatesFromApi: async () => { await refetchTemplates(); },
-    loadAreasFromApi: async () => {
-      const res = await refetchAreas();
-      return res.data || [];
-    },
-    mapRunToChecklist,
-    runService, // Keeps raw service for detailed fetching in onSelectChecklist
-    addNotification,
-
-    handleCreateIncident: async (data: any) => {
-      // Map priority to severity
-      const severity = (data.priority === 'CRITICAL' ? 'high' : data.priority.toLowerCase());
-
-      await createIncident.mutateAsync({
-        ...data,
-        // Ensure area_id is a number, handling both ID strings and names if necessary
-        area_id: isNaN(Number(data.area))
-          ? areas.find(a => a.name === data.area)?.id || 0
-          : Number(data.area),
-        severity
-      });
-    },
-
-    handleUpdateIncidentStatus: async (id: string, s: any, resolutionNote?: string) => {
-      await updateIncident.mutateAsync({ id, data: { status: s, resolution_note: resolutionNote } });
-    },
-
-    handleAssignIncident: async (id: string, userId: number) => {
-      await assignIncident.mutateAsync({ id, userId });
-    },
-
-    handleAddUser: async (name: string, email: string, role: Role, password?: string) => {
-      await createUser.mutateAsync({ name, email, role, password });
-    },
-
-    handleUpdateUser: async (id: string, data: Partial<User>) => {
-      await updateUserApi.mutateAsync({ id, data });
-      // Update local auth user if it's self
-      if (String(id) === String(user?.id)) {
-        // Fetch updated user to update context?
-        // Query cache updates list, but context needs explicit update
-        // We can just merge updates:
-        updateUser({ ...user!, ...data });
-      }
-    },
-
-    handleDeleteUser: async (id: string) => {
-      await deleteUser.mutateAsync(id);
-    },
-
-    handleAddChecklist: async (t: string, a: string, s: string, i: any[], at?: string, vb?: string) => {
-      const run = await createChecklist.mutateAsync({ areaId: Number(a), date: new Date().toISOString().split('T')[0] });
-      if (at || vb) {
-        // `run` is returned from mutationFn (api response)
-        // Need to update assignment
-        const runId = (run as any).id || (run as any).run?.id;
-        await assignChecklist.mutateAsync({ id: runId, data: { assigned_to: Number(at), verified_by: Number(vb) } });
-      }
-    },
-
-    handleAssignChecklist: async (id: string, updates: any) => {
-      await assignChecklist.mutateAsync({ id: Number(id), data: { assigned_to: updates.assignedTo, verified_by: updates.verifiedBy } });
-    },
-
-    handleAddArea: async (name: string, type: string) => {
-      await createArea.mutateAsync({ name, type });
-    },
-
-    handleUpdateArea: async (id: string, name: string, type: string) => {
-      await updateArea.mutateAsync({ id: Number(id), data: { name, type } });
-    },
-
-    handleDeleteArea: async (id: string) => {
-      await deleteArea.mutateAsync(Number(id));
-    },
-
-    handleAddShift: async (name: string, start: string, end: string, type: any, areas: string[]) => {
-      await addShift(name, start, end, type, areas);
-    },
-
-    handleDeleteShift: async (id: string) => {
-      await deleteShift(id);
-    },
-
-    handleCloneChecklistsToToday: async () => {
-      await refetchChecklists();
-      addNotification('Đã làm mới', 'Đã cập nhật danh sách', 'SUCCESS');
-    },
-
-    handleCreateTemplate: async (data: any) => {
-      const payload = {
-        area_id: Number(data.areaId),
-        name: data.name,
-        description: data.description,
-        version: 'v1',
-        is_active: true,
-        groups: [{ title: data.groupTitle, items: data.itemTitles.map((t: string) => ({ title: t })) }],
-        columns: [{ label: data.columnLabel || 'Ca A', type: 'text' }]
-      };
-      await createTemplate.mutateAsync(payload);
-    }
-  };
-
+  // --- QR SCANNER ---
   const handleScanSuccess = (decodedText: string) => {
     const foundChecklist = checklists.find(c =>
       String(c.area.id) === String(decodedText) &&
@@ -189,25 +73,26 @@ export default function AppContent() {
       c.status === ChecklistStatus.PENDING
     );
 
+    setShowScanner(false);
     if (foundChecklist) {
-      setShowScanner(false);
-      setActiveChecklistId(foundChecklist.id);
       addNotification('Tìm thấy', `Đang mở checklist: ${foundChecklist.templateName}`, 'SUCCESS');
     } else {
-      setShowScanner(false);
       const hasArea = areas.some(a => String(a.id) === String(decodedText));
       if (hasArea) {
         addNotification('Khu vực hợp lệ', 'Bạn không có checklist nào cần làm tại đây.', 'NORMAL');
       } else {
-        addNotification('Không tìm thấy', `Mã QR không khớp khu vực nào.`, 'CRITICAL');
+        addNotification('Không tìm thấy', 'Mã QR không khớp khu vực nào.', 'CRITICAL');
       }
     }
   };
 
+  // --- LOADING ---
   if (isAuthLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600"></div>
-    </div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-600"></div>
+      </div>
+    );
   }
 
   if (!user) {
@@ -217,7 +102,7 @@ export default function AppContent() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row relative">
 
-      {/* Desktop Sidebar - Hidden on Mobile */}
+      {/* Desktop Sidebar */}
       {!activeChecklistId && (
         <div className="hidden md:flex md:w-72 md:flex-col fixed top-0 left-0 bottom-0 z-40 h-screen">
           <Sidebar
@@ -231,13 +116,11 @@ export default function AppContent() {
         </div>
       )}
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${!activeChecklistId ? 'md:ml-72' : ''}`}>
         <div className="flex-1 w-full mx-auto md:p-8">
-          {/* Mobile constraint only applies on small screens now */}
           <div className="md:max-w-6xl md:mx-auto w-full pb-24 md:pb-0">
             <AppRoutes
-              currentTab={currentTab}
               user={user}
               users={users}
               checklists={checklists}
@@ -245,22 +128,19 @@ export default function AppContent() {
               areas={areas}
               templates={templates}
               shifts={shifts}
-              activeChecklist={activeChecklist}
-              activeRunContext={activeRunContext}
-              actions={actions}
+              onLogout={handleLogout}
             />
           </div>
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation - Hidden on Desktop */}
+      {/* Mobile Bottom Navigation */}
       {!activeChecklistId && (
         <div className="md:hidden">
           <Navigation
             currentTab={currentTab}
             onTabChange={setCurrentTab}
             role={user.role}
-            // Use pendingReviewCount if we want to add polling for it, currently dropped in simplification or use query
             pendingReviewCount={0}
           />
         </div>
@@ -278,15 +158,17 @@ export default function AppContent() {
         {notifications.map((n) => (
           <div
             key={n.id}
-            className={`pointer-events-auto w-full rounded-xl p-4 shadow-xl border flex items-start gap-3 animate-in slide-in-from-right-5 fade-in duration-300 ${n.type === 'CRITICAL'
-              ? 'bg-red-600 text-white border-red-700'
-              : n.type === 'SUCCESS'
-                ? 'bg-emerald-600 text-white border-emerald-700'
-                : 'bg-white text-gray-800 border-gray-100'
-              }`}
+            className={`pointer-events-auto w-full rounded-xl p-4 shadow-xl border flex items-start gap-3 animate-in slide-in-from-right-5 fade-in duration-300 ${
+              n.type === 'CRITICAL'
+                ? 'bg-red-600 text-white border-red-700'
+                : n.type === 'SUCCESS'
+                  ? 'bg-emerald-600 text-white border-emerald-700'
+                  : 'bg-white text-gray-800 border-gray-100'
+            }`}
           >
-            <div className={`p-2 rounded-full shrink-0 ${n.type === 'CRITICAL' ? 'bg-white/20' : n.type === 'SUCCESS' ? 'bg-white/20' : 'bg-brand-50 text-brand-600'
-              }`}>
+            <div className={`p-2 rounded-full shrink-0 ${
+              n.type === 'CRITICAL' ? 'bg-white/20' : n.type === 'SUCCESS' ? 'bg-white/20' : 'bg-brand-50 text-brand-600'
+            }`}>
               {n.type === 'CRITICAL' ? <AlertTriangle size={20} /> : n.type === 'SUCCESS' ? <CheckCircle size={20} /> : <Bell size={20} />}
             </div>
             <div className="flex-1 pt-0.5">
@@ -296,7 +178,7 @@ export default function AppContent() {
               <p className={`text-xs mt-1 leading-snug ${n.type === 'NORMAL' ? 'text-gray-500' : 'text-white/90'}`}>
                 {n.message}
               </p>
-              <p className={`text-[10px] mt-2 opacity-70`}>Vừa xong</p>
+              <p className="text-[10px] mt-2 opacity-70">Vừa xong</p>
             </div>
             <button
               onClick={() => removeNotification(n.id)}

@@ -7,6 +7,7 @@ use App\Http\Requests\StoreRunRequest;
 use App\Http\Requests\UpdateRunRequest;
 use App\Models\Run;
 use App\Models\ChecklistTemplate;
+use App\Enums\WorkStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
@@ -39,8 +40,8 @@ class RunController extends Controller
     public function show(Run $run): JsonResponse
     {
         $user = request()->user();
-        if ($user && !\App\Support\RunAccess::canView($user, $run)) {
-            return response()->json(['error' => 'Unauthorized'], 403);
+        if ($user) {
+            $this->authorize('view', $run);
         }
 
         $run = $this->runService->getRunDetail($run);
@@ -73,7 +74,7 @@ class RunController extends Controller
         $actor = $request->user();
         if ($actor && !$actor->hasAnyRole(['admin', 'manager'])) {
             if ($request->has('assigned_to') || $request->has('verified_by')) {
-                return response()->json(['error' => 'Unauthorized'], 403);
+                $this->authorize('update', $run);
             }
         }
 
