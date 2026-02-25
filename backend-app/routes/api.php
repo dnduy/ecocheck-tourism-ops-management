@@ -44,6 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:admin|manager,sanctum')->group(function () {
         Route::post('/templates', [TemplatesController::class, 'store']);
         Route::put('/templates/{id}', [TemplatesController::class, 'update']);
+        Route::patch('/templates/{id}', [TemplatesController::class, 'update']);
         Route::delete('/templates/{id}', [TemplatesController::class, 'destroy']);
         Route::post('/templates/import', [TemplateController::class, 'import']);
     });
@@ -111,7 +112,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/review/runs/{run}/reject', [ReviewController::class, 'reject']);
     });
 
-    Route::middleware('role:staff|supervisor,sanctum')->group(function () {
+    Route::middleware('role:admin|manager|staff|supervisor,sanctum')->group(function () {
         Route::post('/review/runs/{run}/start', [ReviewController::class, 'startWork']);
         Route::post('/review/runs/{run}/complete', [ReviewController::class, 'completeWork']);
         Route::post('/review/runs/{run}/request-review', [ReviewController::class, 'requestReview']);

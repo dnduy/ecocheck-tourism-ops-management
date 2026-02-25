@@ -29,6 +29,15 @@ class RunPolicy
     }
 
     /**
+     * Xem danh sách runs để review — admin/manager (handled by before()).
+     * Supervisor cũng có thể xem.
+     */
+    public function viewAny(User $user): bool
+    {
+        return $user->hasAnyRole(['supervisor']);
+    }
+
+    /**
      * Xem run: supervisor xem tất cả, staff chỉ xem của mình.
      */
     public function view(User $user, Run $run): bool
