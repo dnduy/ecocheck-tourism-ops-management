@@ -6,19 +6,20 @@ import { useAreas } from './useAreas';
 import { mapRunToChecklist } from '../../services/mappers';
 
 export const useChecklists = (
-    filters?: { assigned_to?: number; date?: string; status?: string },
+    filters?: { assigned_to?: number; date?: string; status?: string; per_page?: number },
     options?: { enabled?: boolean }
 ) => {
     const { data: areas = [] } = useAreas({ enabled: options?.enabled });
+    // Default to 200 — enough for a day's runs without fetching all-time data
+    const perPage = filters?.per_page ?? 200;
 
     return useQuery({
         queryKey: ['checklists', filters, areas],
         queryFn: async () => {
-            const resp = await runService.list({ ...filters, per_page: 1000 });
+            const resp = await runService.list({ ...filters, per_page: perPage });
             const apiRuns: any[] = resp.data || resp || [];
             return apiRuns.map(run => mapRunToChecklist(run, areas));
         },
-        // enabled: areas.length > 0, // Removed to allow fetching without areas
         refetchInterval: 60000,
         enabled: options?.enabled ?? true,
     });

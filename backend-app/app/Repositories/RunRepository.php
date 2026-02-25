@@ -154,8 +154,15 @@ class RunRepository implements RunRepositoryInterface
             ->paginate($perPage);
     }
 
-    public function countByStatus(string $status): int
+    public function countByStatus(string $status, array $filters = []): int
     {
-        return Run::where('work_status', $status)->count();
+        $query = Run::where('work_status', $status);
+        if (!empty($filters['date'])) {
+            $query->whereDate('run_date', $filters['date']);
+        }
+        if (!empty($filters['area_id'])) {
+            $query->where('area_id', $filters['area_id']);
+        }
+        return $query->count();
     }
 }

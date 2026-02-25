@@ -22,6 +22,6 @@ interface RunServiceInterface
     public function rejectRun(Run $run, User $user, string $note): Run;
     public function resubmitRun(Run $run, User $user): Run;
     public function getPendingReviews(User $user, int $perPage): LengthAwarePaginator;
-    public function getStatusStats(): array;
+    public function getStatusStats(array $filters = []): array;
     public function exportRun(Run $run);
 }

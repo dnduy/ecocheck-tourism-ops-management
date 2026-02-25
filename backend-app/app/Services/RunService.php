@@ -48,18 +48,23 @@ class RunService implements RunServiceInterface
         return DB::transaction(function () use ($data, $creator) {
             $requestedTemplateId = $data['checklist_template_id'] ?? $data['template_id'] ?? null;
 
-            // Prefer requested template; fallback to active template for area, then any template, then create default.
-            $template = ($requestedTemplateId ? ChecklistTemplate::find($requestedTemplateId) : null)
-                ?? ChecklistTemplate::where('area_id', $data['area_id'] ?? null)
+            // Prefer requested template; fallback to active template for area, then any template for that area.
+            // Never auto-create a template — that would produce silent dirty data.
+            if ($requestedTemplateId) {
+                $template = ChecklistTemplate::find($requestedTemplateId);
+                if (!$template) {
+                    throw new \InvalidArgumentException("Template #{$requestedTemplateId} không tồn tại.");
+                }
+            } else {
+                $template = ChecklistTemplate::where('area_id', $data['area_id'] ?? null)
                     ->where('is_active', true)
                     ->first()
-                ?? ChecklistTemplate::where('area_id', $data['area_id'] ?? null)->first()
-                ?? ChecklistTemplate::first()
-                ?? ChecklistTemplate::create([
-                    'area_id' => $data['area_id'],
-                    'name' => 'Default',
-                    'is_active' => true,
-                ]);
+                    ?? ChecklistTemplate::where('area_id', $data['area_id'] ?? null)->first();
+
+                if (!$template) {
+                    throw new \InvalidArgumentException("Không tìm thấy template nào cho khu vực này. Vui lòng tạo template trước.");
+                }
+            }
 
             $sessionId = $data['session_id'] ?? $template->sessions()->orderBy('sort_order')->value('id');
 
@@ -361,8 +366,8 @@ class RunService implements RunServiceInterface
         }
 
         return DB::transaction(function () use ($run, $user, $note) {
-            // Update run status
-            $this->runRepository->update($run, [
+            // Update run status and capture fresh model
+            $updatedRun = $this->runRepository->update($run, [
                 'work_status' => 'approved',
                 'status' => $this->toLegacyStatus('approved'),
                 'verified_by' => $user->id
@@ -380,7 +385,7 @@ class RunService implements RunServiceInterface
                 'note' => $note ?? 'Đã duyệt và xác nhận'
             ]);
 
-            return $run;
+            return $updatedRun;
         });
     }
 
@@ -395,7 +400,7 @@ class RunService implements RunServiceInterface
         }
 
         return DB::transaction(function () use ($run, $user, $note) {
-            $this->runRepository->update($run, [
+            $updatedRun = $this->runRepository->update($run, [
                 'work_status' => 'rejected',
                 'status' => $this->toLegacyStatus('rejected'),
             ]);
@@ -411,7 +416,7 @@ class RunService implements RunServiceInterface
                 'note' => "❌ Từ chối: " . $note
             ]);
 
-            return $run;
+            return $updatedRun;
         });
     }
 
@@ -499,15 +504,15 @@ class RunService implements RunServiceInterface
         return $this->runRepository->getPendingReviewsPaginated($user->id, $perPage);
     }
 
-    public function getStatusStats(): array
+    public function getStatusStats(array $filters = []): array
     {
         return [
-            'pending' => $this->runRepository->countByStatus('pending'),
-            'in_progress' => $this->runRepository->countByStatus('in_progress'),
-            'completed' => $this->runRepository->countByStatus('completed'),
-            'needs_review' => $this->runRepository->countByStatus('needs_review'),
-            'approved' => $this->runRepository->countByStatus('approved'),
-            'rejected' => $this->runRepository->countByStatus('rejected'),
+            'pending'     => $this->runRepository->countByStatus('pending', $filters),
+            'in_progress' => $this->runRepository->countByStatus('in_progress', $filters),
+            'completed'   => $this->runRepository->countByStatus('completed', $filters),
+            'needs_review'=> $this->runRepository->countByStatus('needs_review', $filters),
+            'approved'    => $this->runRepository->countByStatus('approved', $filters),
+            'rejected'    => $this->runRepository->countByStatus('rejected', $filters),
         ];
     }
 

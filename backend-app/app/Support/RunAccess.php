@@ -23,10 +23,12 @@ class RunAccess
             return true;
         }
 
+        // Supervisor can view all runs, not just their own
         if ($user->hasRole('supervisor')) {
-            return (int) $run->assigned_to === (int) $user->id;
+            return true;
         }
 
+        // Staff can only view their own assigned runs
         return (int) $run->assigned_to === (int) $user->id;
     }
 

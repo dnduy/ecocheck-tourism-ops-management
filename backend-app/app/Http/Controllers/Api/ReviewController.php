@@ -44,15 +44,6 @@ class ReviewController extends Controller
      */
     public function showForReview(Run $run, Request $request): JsonResponse
     {
-        // Service should handle loading relations.
-        // We can reuse getRunDetail or create specific method if permissions differ.
-        // The original logic had permission checks. Service logic for 'getRunDetail' is generic CRUD.
-        // But for review specific view, we might want to check if user is allowed.
-        // The Service methods I added (startWork, etc) have checks. getRunDetail just loads data.
-        // For simplicity and to stick to "thin controller", I'll use getRunDetail but strictly we should check permissions here or in service.
-        // Original controller checked: if ($run->verified_by !== $user->id && $user->role !== 'manager')
-        // I will add this check here or assume middleware handles it? No, explicit check is better.
-
         $user = $request->user();
         if (!$user || !\App\Support\RunAccess::canApprove($user, $run)) {
             return response()->json(['error' => 'Unauthorized'], 403);
@@ -153,7 +144,8 @@ class ReviewController extends Controller
      */
     public function getStatusStats(Request $request): JsonResponse
     {
-        $stats = $this->runService->getStatusStats();
+        $filters = $request->only(['date', 'area_id']);
+        $stats = $this->runService->getStatusStats($filters);
         return $this->successResponse($stats, 'Lấy thống kê thành công');
     }
 }

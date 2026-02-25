@@ -81,7 +81,8 @@ export const mapRunToChecklist = (runData: any, areaList: Area[]): Checklist => 
     let mappedStatus = ChecklistStatus.PENDING;
     // Map from workStatus (source of truth) to ChecklistStatus (UI)
     if (workStatus === WorkStatus.IN_PROGRESS) mappedStatus = ChecklistStatus.IN_PROGRESS;
-    else if (workStatus === WorkStatus.COMPLETED || workStatus === WorkStatus.NEEDS_REVIEW) mappedStatus = ChecklistStatus.COMPLETED;
+    else if (workStatus === WorkStatus.NEEDS_REVIEW) mappedStatus = ChecklistStatus.NEEDS_REVIEW;
+    else if (workStatus === WorkStatus.COMPLETED) mappedStatus = ChecklistStatus.COMPLETED;
     else if (workStatus === WorkStatus.APPROVED) mappedStatus = ChecklistStatus.REVIEWED;
     else if (workStatus === WorkStatus.REJECTED) mappedStatus = ChecklistStatus.IN_PROGRESS;
     // Fallback or legacy status check only if workStatus didn't catch it (optional)

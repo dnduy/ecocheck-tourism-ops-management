@@ -11,6 +11,7 @@ export enum ChecklistStatus {
   PENDING = 'pending',
   IN_PROGRESS = 'in_progress',
   COMPLETED = 'completed',
+  NEEDS_REVIEW = 'needs_review', // Alias maps to WorkStatus.NEEDS_REVIEW
   REVIEWED = 'reviewed'
 }
 

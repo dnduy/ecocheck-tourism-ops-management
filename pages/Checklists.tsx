@@ -53,11 +53,12 @@ const groupByDate = (checklists: Checklist[]): { date: string; checklists: Check
 };
 
 // Helper: Count checklists by status
-const countByStatus = (checklists: Checklist[]): { pending: number; inProgress: number; completed: number; reviewed: number } => {
+const countByStatus = (checklists: Checklist[]): { pending: number; inProgress: number; completed: number; needsReview: number; reviewed: number } => {
   return {
     pending: checklists.filter(c => c.status === ChecklistStatus.PENDING).length,
     inProgress: checklists.filter(c => c.status === ChecklistStatus.IN_PROGRESS).length,
     completed: checklists.filter(c => c.status === ChecklistStatus.COMPLETED).length,
+    needsReview: checklists.filter(c => c.status === ChecklistStatus.NEEDS_REVIEW).length,
     reviewed: checklists.filter(c => c.status === ChecklistStatus.REVIEWED).length,
   };
 };
@@ -139,7 +140,8 @@ export const Checklists: React.FC<ChecklistsProps> = ({ checklists, onSelectChec
         [ChecklistStatus.PENDING]: 0,
         [ChecklistStatus.IN_PROGRESS]: 1,
         [ChecklistStatus.COMPLETED]: 2,
-        [ChecklistStatus.REVIEWED]: 3
+        [ChecklistStatus.NEEDS_REVIEW]: 3,
+        [ChecklistStatus.REVIEWED]: 4
       };
       return (order[a.status] ?? 99) - (order[b.status] ?? 99);
     }
